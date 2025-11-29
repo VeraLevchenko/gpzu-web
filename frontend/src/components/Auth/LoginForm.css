@@ -1,0 +1,9 @@
+.login-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }
+.login-card { width: 100%; max-width: 420px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+.login-card .ant-card-head { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px 16px 0 0; border-bottom: none; }
+.login-title { text-align: center; color: white; }
+.login-title h2 { color: white; margin: 0; font-size: 2rem; font-weight: 700; }
+.login-title p { color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 0.95rem; }
+.login-card .ant-card-body { padding: 32px; }
+.login-card .ant-btn-primary { height: 48px; font-size: 1.05rem; font-weight: 600; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; }
+.login-card .ant-btn-primary:hover { background: linear-gradient(135deg, #5568d3 0%, #6a3f94 100%); }
