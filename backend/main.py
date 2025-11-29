@@ -1,3 +1,4 @@
+# backend/main.py
 import logging
 from pathlib import Path
 from fastapi import FastAPI
@@ -6,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from api.auth import router as auth_router
 from api.gp.kaiten import router as kaiten_router
+from api.gp.midmif import router as midmif_router  # ← ДОБАВЛЕНО
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger("gpzu-web")
@@ -41,38 +43,32 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 FRONTEND_BUILD = Path(__file__).parent.parent / "frontend" / "build"
 
-# ВАЖНО: Сначала API роуты!
+# API роуты
 app.include_router(auth_router)
 app.include_router(kaiten_router)
+app.include_router(midmif_router)  # ← ДОБАВЛЕНО
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": "GPZU Web API", "version": "1.0.0"}
 
-# Статические файлы /uploads
+# Статические файлы
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# Frontend - ПОСЛЕДНИМ! (catch-all route)
+# Frontend
 if FRONTEND_BUILD.exists():
-    # Статические ресурсы (JS, CSS, изображения)
     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
     
-    # Все остальные запросы -> index.html (для React Router)
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
-        """Отдаёт index.html для клиентской маршрутизации React"""
-        # Проверяем что это не API запрос
         if full_path.startswith("api"):
-            # API обрабатывается выше, сюда не должны попасть
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="API endpoint not found")
         
-        # Проверяем есть ли файл в build
         file_path = FRONTEND_BUILD / full_path
         if file_path.is_file() and file_path.exists():
             return FileResponse(file_path)
         
-        # Иначе отдаём index.html (для клиентского роутинга)
         index_path = FRONTEND_BUILD / "index.html"
         if index_path.exists():
             return FileResponse(index_path)

@@ -1,3 +1,4 @@
+// frontend/src/services/api.js
 import axios from 'axios';
 
 // Умное определение API URL
@@ -44,6 +45,7 @@ api.interceptors.response.use(
 
 export default api;
 
+// ========== KAITEN API ========== //
 export const kaitenApi = {
   parseApplication: (file) => {
     const formData = new FormData();
@@ -55,6 +57,37 @@ export const kaitenApi = {
   createTask: (data) => api.post('/api/gp/kaiten/create-task', data),
 };
 
+// ========== MID/MIF API ========== //
+export const midmifApi = {
+  /**
+   * Предпросмотр координат из ЕГРН
+   */
+  previewCoordinates: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/gp/midmif/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  /**
+   * Генерация MID/MIF файлов
+   * Возвращает ZIP архив
+   */
+  generateMidMif: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/api/gp/midmif/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob' // ВАЖНО: для скачивания файла
+    });
+    
+    return response;
+  }
+};
+
+// ========== AUTH API ========== //
 export const authApi = {
   checkAuth: () => api.get('/api/auth/me'),
   logout: () => api.post('/api/auth/logout'),

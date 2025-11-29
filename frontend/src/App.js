@@ -6,6 +6,7 @@ import LoginForm from './components/Auth/LoginForm';
 import Home from './pages/Home';
 import GP from './pages/GP';
 import KaitenFlow from './components/GP/KaitenFlow';
+import MidMifFlow from './components/GP/MidMifFlow';
 import { authApi } from './services/api';
 
 const ProtectedRoute = ({ children }) => {
@@ -32,6 +33,7 @@ function App() {
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/gp" element={<ProtectedRoute><GP /></ProtectedRoute>} />
           <Route path="/gp/kaiten" element={<ProtectedRoute><KaitenFlow /></ProtectedRoute>} />
+          <Route path="/gp/midmif" element={<ProtectedRoute><MidMifFlow /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

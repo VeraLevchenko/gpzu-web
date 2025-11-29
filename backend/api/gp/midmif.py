@@ -1,0 +1,245 @@
+# backend/api/gp/midmif.py
+"""
+API endpoints для генерации MID/MIF файлов из выписки ЕГРН.
+"""
+
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import List, Tuple
+import logging
+import io
+import zipfile
+
+from parsers.egrn_parser import parse_egrn_xml, EGRNData, Coord as ECoord
+from generator.midmif_builder import build_mid_mif_from_contours
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/gp/midmif", tags=["midmif"])
+
+
+@router.post("/preview")
+async def preview_coordinates(file: UploadFile = File(...)):
+    """
+    Предпросмотр координат из выписки ЕГРН.
+    
+    Возвращает список координат для отображения пользователю
+    перед генерацией MID/MIF.
+    
+    Args:
+        file: XML или ZIP файл выписки ЕГРН
+    
+    Returns:
+        JSON с координатами и метаинформацией
+    """
+    
+    # Проверка формата файла
+    if not file.filename or not (
+        file.filename.lower().endswith('.xml') or 
+        file.filename.lower().endswith('.zip')
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Файл должен быть в формате XML или ZIP"
+        )
+    
+    try:
+        # Читаем файл
+        content = await file.read()
+        logger.info(f"Получен файл ЕГРН: {file.filename} ({len(content)} байт)")
+        
+        # Парсим ЕГРН
+        egrn: EGRNData = parse_egrn_xml(content)
+        logger.info(f"Выписка распарсена: КН={egrn.cadnum}")
+        
+        # Проверяем, что это земельный участок
+        if not egrn.is_land:
+            raise HTTPException(
+                status_code=400,
+                detail="Это не выписка ЕГРН по земельному участку"
+            )
+        
+        # Проверяем наличие контуров
+        if not egrn.contours:
+            raise HTTPException(
+                status_code=400,
+                detail="В выписке ЕГРН отсутствуют координаты границ участка"
+            )
+        
+        # Пересчитываем нумерацию точек
+        numbered_contours = _renumber_contours(egrn.contours)
+        
+        # Собираем все точки
+        all_points = [
+            pt for cnt in numbered_contours for pt in cnt
+        ]
+        
+        # Формируем ответ с координатами в порядке Y (восток), X (север)
+        coordinates = []
+        for pt in all_points:
+            coordinates.append({
+                "num": pt.num,
+                "y": pt.y,  # Y (восток)
+                "x": pt.x   # X (север)
+            })
+        
+        return {
+            "success": True,
+            "cadnum": egrn.cadnum or "—",
+            "total_points": len(all_points),
+            "coordinates": coordinates,
+            "note": "Координаты в порядке Y (восток), X (север) — как в пространственных слоях"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.exception(f"Ошибка предпросмотра: {ex}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обработки файла: {str(ex)}"
+        )
+
+
+@router.post("/generate")
+async def generate_midmif(file: UploadFile = File(...)):
+    """
+    Генерация MID/MIF файлов из выписки ЕГРН.
+    
+    Принимает:
+    - XML или ZIP файл выписки ЕГРН
+    
+    Возвращает:
+    - ZIP архив с файлами .mif и .mid
+    
+    Args:
+        file: XML или ZIP файл выписки ЕГРН
+    
+    Returns:
+        StreamingResponse с ZIP архивом
+    """
+    
+    # Проверка формата файла
+    if not file.filename or not (
+        file.filename.lower().endswith('.xml') or 
+        file.filename.lower().endswith('.zip')
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Файл должен быть в формате XML или ZIP"
+        )
+    
+    try:
+        # Читаем файл
+        content = await file.read()
+        logger.info(f"Получен файл ЕГРН: {file.filename} ({len(content)} байт)")
+        
+        # Парсим ЕГРН
+        egrn: EGRNData = parse_egrn_xml(content)
+        logger.info(f"Выписка распарсена: КН={egrn.cadnum}")
+        
+        # Проверяем, что это земельный участок
+        if not egrn.is_land:
+            raise HTTPException(
+                status_code=400,
+                detail="Это не выписка ЕГРН по земельному участку"
+            )
+        
+        # Проверяем наличие контуров
+        if not egrn.contours:
+            raise HTTPException(
+                status_code=400,
+                detail="В выписке ЕГРН отсутствуют координаты границ участка"
+            )
+        
+        # Пересчитываем нумерацию точек
+        numbered_contours = _renumber_contours(egrn.contours)
+        
+        # Формируем структуру для генератора
+        # ВАЖНО: Для MID/MIF генератора передаём в исходном порядке X, Y
+        contours_for_builder: List[List[Tuple[str, str, str]]] = []
+        for cnt in numbered_contours:
+            contours_for_builder.append([
+                (c.num, c.x, c.y) for c in cnt
+            ])
+        
+        # Генерируем MID/MIF
+        base_name, mif_bytes, mid_bytes = build_mid_mif_from_contours(
+            egrn.cadnum,
+            contours_for_builder
+        )
+        
+        logger.info(f"MID/MIF сгенерированы для {egrn.cadnum}")
+        
+        # Создаём ZIP архив в памяти
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr(f"{base_name}.mif", mif_bytes)
+            zip_file.writestr(f"{base_name}.mid", mid_bytes)
+        
+        zip_buffer.seek(0)
+        
+        # Возвращаем ZIP архив
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={base_name}.zip"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.exception(f"Ошибка генерации MID/MIF: {ex}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обработки файла: {str(ex)}"
+        )
+
+
+# ===================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===================== #
+
+def _renumber_contours(contours: List[List[ECoord]]) -> List[List[ECoord]]:
+    """
+    Пересчитывает нумерацию точек в контурах.
+    
+    Логика (скопирована из flows/midmif_flow.py бота):
+    - Внутри контура точки с одинаковыми координатами получают один номер
+    - Между контурами номера идут сквозняком (следующий контур начинается с max+1)
+    
+    Args:
+        contours: Список контуров из ЕГРН
+    
+    Returns:
+        Список контуров с пересчитанной нумерацией
+    """
+    numbered_contours: List[List[ECoord]] = []
+    next_global_num = 1
+    
+    for contour in contours:
+        coord_to_num = {}  # ключ: (normx, normy) -> номер точки
+        contour_numbered: List[ECoord] = []
+        
+        for pt in contour:
+            # Нормализуем координаты
+            normx = pt.x.strip().replace(",", ".")
+            normy = pt.y.strip().replace(",", ".")
+            key = (normx, normy)
+            
+            # Если координата уже встречалась в этом контуре - используем тот же номер
+            if key in coord_to_num:
+                num_val = coord_to_num[key]
+            else:
+                # Новая координата - присваиваем новый номер
+                num_val = next_global_num
+                coord_to_num[key] = num_val
+                next_global_num += 1
+            
+            contour_numbered.append(
+                ECoord(num=str(num_val), x=pt.x, y=pt.y)
+            )
+        
+        numbered_contours.append(contour_numbered)
+    
+    return numbered_contours
