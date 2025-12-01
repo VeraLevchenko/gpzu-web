@@ -1,17 +1,16 @@
-// frontend/src/pages/GP.jsx
 import React from 'react';
 import { Card, Row, Col, Button } from 'antd';
 import { 
   ApiOutlined, 
-  ArrowLeftOutlined, 
-  EnvironmentOutlined  // ← ДОБАВЛЕНО
+  EnvironmentOutlined, 
+  FileProtectOutlined,  // ← НОВОЕ
+  ArrowLeftOutlined 
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import './GP.css';
 
 const GP = () => {
   const navigate = useNavigate();
-  
   return (
     <div className="gp-container">
       <div className="gp-header">
@@ -24,20 +23,12 @@ const GP = () => {
         </Button>
         <h1>Градостроительные планы</h1>
       </div>
-
+      
       <Row gutter={[24, 24]} style={{ marginTop: 40 }}>
-        
-        {/* Кайтен */}
+        {/* Kaiten - Синяя карточка */}
         <Col xs={24} sm={12} lg={8}>
-          <Card 
-            hoverable 
-            className="gp-module-card" 
-            onClick={() => navigate('/gp/kaiten')}
-          >
-            <div 
-              className="module-icon-container" 
-              style={{ backgroundColor: '#1890ff' }}
-            >
+          <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/kaiten')}>
+            <div className="module-icon-container" style={{ backgroundColor: '#1890ff' }}>
               <ApiOutlined style={{ fontSize: 64, color: 'white' }} />
             </div>
             <h2 className="module-title">Создать задачу Кайтен</h2>
@@ -55,17 +46,10 @@ const GP = () => {
           </Card>
         </Col>
 
-        {/* MID/MIF - НОВАЯ КАРТОЧКА */}
+        {/* MidMif - Зелёная карточка */}
         <Col xs={24} sm={12} lg={8}>
-          <Card 
-            hoverable 
-            className="gp-module-card" 
-            onClick={() => navigate('/gp/midmif')}
-          >
-            <div 
-              className="module-icon-container" 
-              style={{ backgroundColor: '#52c41a' }}
-            >
+          <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/midmif')}>
+            <div className="module-icon-container" style={{ backgroundColor: '#52c41a' }}>
               <EnvironmentOutlined style={{ fontSize: 64, color: 'white' }} />
             </div>
             <h2 className="module-title">Подготовить MID/MIF</h2>
@@ -83,6 +67,26 @@ const GP = () => {
           </Card>
         </Col>
 
+        {/* TU - Оранжевая карточка (НОВОЕ) */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/tu')}>
+            <div className="module-icon-container" style={{ backgroundColor: '#fa8c16' }}>
+              <FileProtectOutlined style={{ fontSize: 64, color: 'white' }} />
+            </div>
+            <h2 className="module-title">Подготовить запросы ТУ</h2>
+            <p className="module-description">
+              Формирование запросов технических условий в РСО с автоматической регистрацией
+            </p>
+            <Button 
+              type="primary" 
+              block 
+              size="large" 
+              style={{ backgroundColor: '#fa8c16', marginTop: 16 }}
+            >
+              Открыть
+            </Button>
+          </Card>
+        </Col>
       </Row>
     </div>
   );

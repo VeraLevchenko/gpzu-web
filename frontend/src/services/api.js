@@ -1,4 +1,3 @@
-// frontend/src/services/api.js
 import axios from 'axios';
 
 // Умное определение API URL
@@ -45,7 +44,6 @@ api.interceptors.response.use(
 
 export default api;
 
-// ========== KAITEN API ========== //
 export const kaitenApi = {
   parseApplication: (file) => {
     const formData = new FormData();
@@ -57,11 +55,7 @@ export const kaitenApi = {
   createTask: (data) => api.post('/api/gp/kaiten/create-task', data),
 };
 
-// ========== MID/MIF API ========== //
 export const midmifApi = {
-  /**
-   * Предпросмотр координат из ЕГРН
-   */
   previewCoordinates: (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -70,24 +64,53 @@ export const midmifApi = {
     });
   },
   
-  /**
-   * Генерация MID/MIF файлов
-   * Возвращает ZIP архив
-   */
   generateMidMif: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    
     const response = await api.post('/api/gp/midmif/generate', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      responseType: 'blob' // ВАЖНО: для скачивания файла
+      responseType: 'blob'
+    });
+    return response;
+  }
+};
+
+export const tuApi = {
+  parseApplication: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/gp/tu/parse-application', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  parseEgrn: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/gp/tu/parse-egrn', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  generateTu: async (data) => {
+    const formData = new FormData();
+    formData.append('cadnum', data.cadnum);
+    formData.append('address', data.address);
+    formData.append('area', data.area);
+    formData.append('vri', data.vri);
+    formData.append('app_number', data.app_number);
+    formData.append('app_date', data.app_date);
+    formData.append('applicant', data.applicant);
+
+    const response = await api.post('/api/gp/tu/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
     });
     
     return response;
   }
 };
 
-// ========== AUTH API ========== //
 export const authApi = {
   checkAuth: () => api.get('/api/auth/me'),
   logout: () => api.post('/api/auth/logout'),
