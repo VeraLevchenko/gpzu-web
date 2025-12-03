@@ -10,6 +10,9 @@
 - MID/MIF: подготовка файлов для MapInfo
 - ТУ: формирование запросов технических условий
 - ГПЗУ: подготовка градостроительных планов
+
+Общие сервисы:
+- Parsers: парсинг заявлений, ЕГРН, пространственный анализ
 """
 
 import logging
@@ -21,6 +24,7 @@ from fastapi.responses import FileResponse
 
 # Импорт роутеров
 from api.auth import router as auth_router
+from api.parsers import router as parsers_router  # ← НОВОЕ: Общие парсеры
 from api.gp.kaiten import router as kaiten_router
 from api.gp.midmif import router as midmif_router
 from api.gp.tu import router as tu_router
@@ -75,7 +79,7 @@ app.add_middleware(
 # СОЗДАНИЕ ДИРЕКТОРИЙ
 # ========================================================================
 
-# Папка для загрузок (если понадобится)
+# Папка для загрузок
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -89,11 +93,14 @@ FRONTEND_BUILD = Path(__file__).parent.parent / "frontend" / "build"
 # Аутентификация
 app.include_router(auth_router)
 
+# Общие сервисы (парсеры)
+app.include_router(parsers_router)  # ← НОВОЕ: /api/parsers/*
+
 # Модули градостроительного плана
 app.include_router(kaiten_router)      # Создание задач в Kaiten
 app.include_router(midmif_router)      # Подготовка MID/MIF файлов
 app.include_router(tu_router)          # Формирование запросов ТУ
-app.include_router(gradplan_router)    # Подготовка градостроительных планов
+app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
@@ -113,6 +120,7 @@ async def health_check():
         "version": "1.0.0",
         "modules": {
             "auth": "enabled",
+            "parsers": "enabled",  # ← НОВОЕ
             "kaiten": "enabled",
             "midmif": "enabled",
             "tu": "enabled",
@@ -130,6 +138,14 @@ async def api_info():
         Список модулей с описанием
     """
     return {
+        "services": [
+            {
+                "name": "Parsers",
+                "prefix": "/api/parsers",
+                "description": "Общие парсеры: заявления, ЕГРН, пространственный анализ",
+                "endpoints": 4
+            }
+        ],
         "modules": [
             {
                 "name": "Kaiten",
@@ -153,13 +169,13 @@ async def api_info():
                 "name": "ГПЗУ",
                 "prefix": "/api/gp/gradplan",
                 "description": "Подготовка градостроительных планов",
-                "endpoints": 4
+                "endpoints": 3
             },
         ]
     }
 
 # ========================================================================
-# СТАТИЧЕСКИЕ ФАЙЛЫ (для загрузок, если понадобится)
+# СТАТИЧЕСКИЕ ФАЙЛЫ
 # ========================================================================
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

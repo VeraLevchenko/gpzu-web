@@ -1,394 +1,189 @@
-# backend/api/gp/gradplan.py
-"""
-API endpoints для подготовки градостроительных планов (ГПЗУ).
-"""
-
-import io
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi.responses import JSONResponse, FileResponse
 import os
-import tempfile
 import logging
 from pathlib import Path
 from typing import Dict, Any
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
-
-from parsers.application_parser import parse_application_docx, ApplicationData
-from parsers.egrn_parser import parse_egrn_xml, EGRNData
-from models.gp_data import GPData, create_gp_data_from_parsed
-from utils.spatial_analysis import perform_spatial_analysis
 from generator.gp_builder import GPBuilder
+from models.gp_data import GPData, ParcelInfo
+from utils.spatial_analysis import perform_spatial_analysis
 
-logger = logging.getLogger(__name__)
+router = APIRouter()
+logger = logging.getLogger("gpzu-web.gradplan")
 
-router = APIRouter(prefix="/api/gp/gradplan", tags=["gradplan"])
-
-# Путь к шаблону градплана
+# Путь к шаблону
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "templates" / "gpzu_template.docx"
+UPLOADS_DIR = BASE_DIR / "uploads"
+
+# Создаём директорию для загрузок
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ========================================================================
-# ENDPOINT 1: Парсинг заявления
-# ========================================================================
-
-@router.post("/parse-application")
-async def parse_application_endpoint(file: UploadFile = File(...)):
+@router.post("/generate")
+async def generate_gradplan(request: Request):
     """
-    Парсинг заявления о выдаче ГПЗУ из DOCX файла.
+    Генерация градостроительного плана.
     
-    Извлекает:
-    - Номер заявления
-    - Дату заявления
-    - Заявителя (ФИО или наименование организации)
-    - Кадастровый номер земельного участка
-    - Цель использования участка
-    - Срок оказания услуги (+14 рабочих дней)
-    
-    Args:
-        file: DOCX файл заявления
-    
-    Returns:
-        JSON с данными заявления
+    Принимает JSON с полными данными для формирования ГПЗУ.
     """
-    
-    # Проверка формата файла
-    if not file.filename or not file.filename.lower().endswith('.docx'):
-        raise HTTPException(
-            status_code=400,
-            detail="Файл должен быть в формате DOCX"
-        )
-    
     try:
-        # Читаем файл
-        content = await file.read()
-        logger.info(f"Получен файл заявления: {file.filename} ({len(content)} байт)")
+        data = await request.json()
+        logger.info("Получен запрос на генерацию градплана")
         
-        # Парсим
-        app_data: ApplicationData = parse_application_docx(content)
-        logger.info(f"Заявление распарсено: заявитель={app_data.applicant}, КН={app_data.cadnum}")
+        # Валидация обязательных полей
+        if not data.get("application"):
+            raise HTTPException(status_code=400, detail="Отсутствуют данные заявления")
+        if not data.get("parcel"):
+            raise HTTPException(status_code=400, detail="Отсутствуют данные участка")
+        if not data.get("zone"):
+            raise HTTPException(status_code=400, detail="Отсутствуют данные территориальной зоны")
         
-        # Формируем ответ
-        return {
+        # Формируем имя файла
+        app_number = data["application"].get("number", "UNKNOWN").replace("/", "-")
+        cadnum = data["parcel"].get("cadnum", "UNKNOWN").replace(":", "-")
+        output_filename = f"GPZU_{app_number}_{cadnum}.docx"
+        output_path = UPLOADS_DIR / output_filename
+        
+        # Генерация документа
+        builder = GPBuilder(str(TEMPLATE_PATH))
+        result_path = builder.generate(data, str(output_path))
+        
+        logger.info(f"Градплан успешно сформирован: {result_path}")
+        
+        return JSONResponse(content={
             "success": True,
-            "data": {
-                "number": app_data.number,
-                "date": app_data.date.isoformat() if app_data.date else None,
-                "date_text": app_data.date_text,
-                "applicant": app_data.applicant,
-                "cadnum": app_data.cadnum,
-                "purpose": app_data.purpose,
-                "service_date": app_data.service_date.isoformat() if app_data.service_date else None,
-            }
-        }
+            "message": "Градостроительный план успешно сформирован",
+            "filename": output_filename,
+            "download_url": f"/api/gp/gradplan/download/{output_filename}"
+        })
         
-    except Exception as ex:
-        logger.exception(f"Ошибка парсинга заявления: {ex}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка обработки файла: {str(ex)}"
-        )
+    except Exception as e:
+        logger.error(f"Ошибка генерации градплана: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ========================================================================
-# ENDPOINT 2: Парсинг выписки ЕГРН
-# ========================================================================
-
-@router.post("/parse-egrn")
-async def parse_egrn_endpoint(file: UploadFile = File(...)):
+@router.get("/download/{filename}")
+async def download_gradplan(filename: str):
     """
-    Парсинг выписки из ЕГРН (XML или ZIP).
+    Скачивание сгенерированного градплана.
+    """
+    file_path = UPLOADS_DIR / filename
     
-    Извлекает:
-    - Кадастровый номер участка
-    - Адрес
-    - Площадь
-    - Вид разрешённого использования (ВРИ)
-    - Координаты границ участка
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
+@router.post("/spatial-analysis")
+async def spatial_analysis(request: Request):
+    """
+    Пространственный анализ участка по координатам из ЕГРН.
+    
+    Определяет:
+    - Территориальную зону
     - Объекты капитального строительства
+    - ЗОУИТ
+    - Документацию по планировке
     
-    ВАЖНО: Координаты автоматически преобразуются из формата ЕГРН (X=север, Y=восток)
-    в формат для пространственного анализа (x=восток, y=север).
-    
-    Args:
-        file: XML или ZIP файл выписки ЕГРН
-    
-    Returns:
-        JSON с данными участка
+    Входные данные:
+    {
+        "cadnum": "42:30:0305010:128",
+        "coordinates": [
+            {"num": "1", "x": "2199600.00", "y": "438100.00"},
+            ...
+        ]
+    }
     """
-    
-    # Проверка формата файла
-    if not file.filename or not (
-        file.filename.lower().endswith('.xml') or 
-        file.filename.lower().endswith('.zip')
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Файл должен быть в формате XML или ZIP"
-        )
-    
     try:
-        # Читаем файл
-        content = await file.read()
-        logger.info(f"Получен файл ЕГРН: {file.filename} ({len(content)} байт)")
+        data = await request.json()
+        cadnum = data.get("cadnum")
+        coordinates = data.get("coordinates", [])
         
-        # Парсим
-        egrn: EGRNData = parse_egrn_xml(content)
-        logger.info(f"Выписка распарсена: КН={egrn.cadnum}, адрес={egrn.address}")
+        if not cadnum:
+            raise HTTPException(status_code=400, detail="Не указан кадастровый номер")
         
-        # Проверяем, что это земельный участок
-        if not egrn.is_land:
-            raise HTTPException(
-                status_code=400,
-                detail="Это не выписка ЕГРН по земельному участку"
-            )
+        if not coordinates:
+            raise HTTPException(status_code=400, detail="Не указаны координаты участка")
         
-        # Преобразуем координаты для JSON
-        # КРИТИЧНО: Меняем X↔Y для совместимости со слоями
-        coords_dicts = []
-        for c in egrn.coordinates:
-            coords_dicts.append({
-                'num': c.num,
-                'x': c.y,  # Y из ЕГРН (восток) → x в JSON
-                'y': c.x   # X из ЕГРН (север) → y в JSON
-            })
+        logger.info(f"Пространственный анализ для КН: {cadnum}")
         
-        # Формируем ответ
-        return {
-            "success": True,
-            "data": {
-                "cadnum": egrn.cadnum,
-                "address": egrn.address,
-                "area": egrn.area,
-                "region": egrn.region,
-                "municipality": egrn.municipality,
-                "settlement": egrn.settlement,
-                "permitted_use": egrn.permitted_use,
-                "coordinates": coords_dicts,
-                "capital_objects_egrn": egrn.capital_objects,
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as ex:
-        logger.exception(f"Ошибка парсинга ЕГРН: {ex}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка обработки файла: {str(ex)}"
+        # Создаём минимальный объект GPData для анализа
+        # coordinates уже в формате списка словарей [{"num": "1", "x": "...", "y": "..."}]
+        gp_data = GPData()
+        gp_data.parcel = ParcelInfo(
+            cadnum=cadnum,
+            address="",
+            area="",
+            coordinates=coordinates  # Передаём как есть - список словарей
         )
-
-
-# ========================================================================
-# ENDPOINT 3: Пространственный анализ
-# ========================================================================
-
-@router.post("/analyze")
-async def analyze_endpoint(data: Dict[str, Any]):
-    """
-    Выполнение пространственного анализа земельного участка.
-    
-    Анализ включает:
-    1. Определение территориальной зоны
-    2. Поиск объектов капитального строительства
-    3. Проверка проектов планировки территории
-    4. Поиск зон с особыми условиями (ЗОУИТ)
-    5. Проверка объектов культурного наследия (ОКН)
-    
-    Принимает:
-    - application: данные заявления (из parse-application)
-    - egrn: данные ЕГРН (из parse-egrn)
-    
-    Возвращает:
-    - Полные данные GPData с результатами анализа
-    - warnings: предупреждения (например, о множественных зонах)
-    - errors: критические ошибки
-    
-    Args:
-        data: JSON с полями application и egrn
-    
-    Returns:
-        JSON с результатами анализа
-    """
-    
-    try:
-        logger.info("Начало пространственного анализа")
-        
-        # Проверяем наличие данных
-        if 'application' not in data or 'egrn' not in data:
-            raise HTTPException(
-                status_code=400,
-                detail="Необходимо передать данные заявления (application) и ЕГРН (egrn)"
-            )
-        
-        application_dict = data['application']
-        egrn_dict = data['egrn']
-        
-        # Проверяем наличие координат
-        if not egrn_dict.get('coordinates'):
-            raise HTTPException(
-                status_code=400,
-                detail="В данных ЕГРН отсутствуют координаты участка"
-            )
-        
-        logger.info(
-            f"Анализ для участка: КН={egrn_dict.get('cadnum')}, "
-            f"координат={len(egrn_dict.get('coordinates', []))}"
-        )
-        
-        # Создаём объект GPData
-        gp_data = create_gp_data_from_parsed(application_dict, egrn_dict)
         
         # Выполняем пространственный анализ
         gp_data = perform_spatial_analysis(gp_data)
         
-        logger.info("Пространственный анализ завершён успешно")
-        
         # Формируем ответ
-        # ВАЖНО: Используем to_dict() для исключения внутренних полей
-        result_data = gp_data.to_dict()
-        
-        # Добавляем warnings и errors отдельно (они нужны пользователю, но не в to_dict)
-        return {
-            "success": True,
-            "data": result_data,
+        result = {
+            "zone": {
+                "code": gp_data.zone.code if gp_data.zone else "",
+                "name": gp_data.zone.name if gp_data.zone else ""
+            } if gp_data.zone else None,
+            
+            "capital_objects": [
+                {
+                    "cadnum": obj.cadnum,
+                    "object_type": obj.object_type,
+                    "purpose": obj.purpose,
+                    "area": obj.area,
+                    "floors": obj.floors
+                }
+                for obj in gp_data.capital_objects
+            ],
+            
+            "zouit": [
+                {
+                    "name": z.name,
+                    "registry_number": z.registry_number,
+                    "area": z.area,
+                    "document": z.document,
+                    "restrictions": z.restrictions
+                }
+                for z in gp_data.zouit
+            ],
+            
+            "planning_project": {
+                "exists": gp_data.planning_project.exists if gp_data.planning_project else False,
+                "decision_full": gp_data.planning_project.decision_full if gp_data.planning_project else "Документация по планировке территории не утверждена",
+                "project_type": gp_data.planning_project.project_type if gp_data.planning_project else None,
+                "project_name": gp_data.planning_project.project_name if gp_data.planning_project else None,
+                "decision_number": gp_data.planning_project.decision_number if gp_data.planning_project else None,
+                "decision_date": gp_data.planning_project.decision_date if gp_data.planning_project else None,
+            } if gp_data.planning_project else {
+                "exists": False,
+                "decision_full": "Документация по планировке территории не утверждена"
+            },
+            
             "warnings": gp_data.warnings,
-            "errors": gp_data.errors,
+            "errors": gp_data.errors
         }
         
-    except HTTPException:
-        raise
-    except Exception as ex:
-        logger.exception(f"Ошибка при анализе: {ex}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка пространственного анализа: {str(ex)}"
-        )
+        logger.info(f"Анализ выполнен: зона={result['zone']}, ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])}")
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"Ошибка пространственного анализа: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ========================================================================
-# ENDPOINT 4: Генерация документа ГПЗУ
-# ========================================================================
-
-@router.post("/generate")
-async def generate_gp_endpoint(data: Dict[str, Any]):
+@router.get("/health")
+async def health_check():
     """
-    Генерация документа градостроительного плана (ГПЗУ).
-    
-    Принимает:
-    - Полные данные GPData (application, parcel, zone, zouit, и т.д.)
-    
-    Возвращает:
-    - DOCX файл с готовым градпланом
-    
-    Процесс:
-    1. Валидация входных данных
-    2. Создание объекта GPBuilder
-    3. Генерация документа с вставкой блоков зон и ЗОУИТ
-    4. Возврат файла для скачивания
+    Проверка здоровья API градплана.
     """
-    
-    try:
-        logger.info("Начало генерации документа ГПЗУ")
-        
-        # ===== ВАЛИДАЦИЯ ДАННЫХ ===== #
-        
-        # Проверяем наличие основных секций
-        if 'parcel' not in data or not data['parcel']:
-            raise HTTPException(
-                status_code=400,
-                detail="Отсутствуют данные о земельном участке (parcel)"
-            )
-        
-        if 'zone' not in data or not data['zone']:
-            raise HTTPException(
-                status_code=400,
-                detail="Отсутствуют данные о территориальной зоне (zone)"
-            )
-        
-        parcel = data['parcel']
-        zone = data['zone']
-        
-        # Проверяем обязательные поля участка
-        if not parcel.get('cadnum'):
-            raise HTTPException(
-                status_code=400,
-                detail="Не указан кадастровый номер участка"
-            )
-        
-        # Проверяем код зоны (критично для подбора блоков)
-        if not zone.get('code'):
-            raise HTTPException(
-                status_code=400,
-                detail="Не указан код территориальной зоны"
-            )
-        
-        logger.info(f"Генерация ГПЗУ для участка {parcel['cadnum']}, зона {zone['code']}")
-        
-        # ===== ПОДГОТОВКА ДАННЫХ ===== #
-        
-        # Убираем внутренние поля из зоны (если они есть)
-        zone_clean = dict(zone)
-        zone_clean.pop('_multiple_zones', None)
-        zone_clean.pop('_all_zones', None)
-        zone_clean.pop('_overlap_percent', None)
-        data['zone'] = zone_clean
-        
-        # ===== ГЕНЕРАЦИЯ ДОКУМЕНТА ===== #
-        
-        # Путь к шаблону
-        template_path = TEMPLATE_PATH
-        
-        if not template_path.exists():
-            logger.error(f"Шаблон не найден: {template_path}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Шаблон градплана не найден: {template_path.name}"
-            )
-        
-        # Создаём генератор
-        builder = GPBuilder(str(template_path))
-        
-        # Создаём временный файл для результата
-        output_fd, output_path = tempfile.mkstemp(suffix='.docx', prefix='gpzu_')
-        os.close(output_fd)  # Закрываем файловый дескриптор
-        
-        try:
-            # Генерируем документ
-            result_path = builder.generate(data, output_path)
-            
-            logger.info(f"Документ ГПЗУ успешно сгенерирован: {result_path}")
-            
-            # Читаем файл
-            with open(result_path, 'rb') as f:
-                docx_bytes = f.read()
-            
-            # Формируем имя файла для скачивания
-            cadnum = parcel['cadnum'].replace(':', '_')
-            filename = f"GPZU_{cadnum}.docx"
-            
-            # Возвращаем файл
-            return StreamingResponse(
-                io.BytesIO(docx_bytes),
-                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                headers={
-                    "Content-Disposition": f"attachment; filename={filename}"
-                }
-            )
-            
-        finally:
-            # Удаляем временный файл
-            try:
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-            except Exception as e:
-                logger.warning(f"Не удалось удалить временный файл: {e}")
-        
-    except HTTPException:
-        raise
-    except Exception as ex:
-        logger.exception(f"Ошибка генерации ГПЗУ: {ex}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка генерации документа: {str(ex)}"
-        )
+    return JSONResponse(content={"status": "ok", "service": "gradplan"})

@@ -11,10 +11,12 @@ from docx.shared import Cm, RGBColor, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.table import Table, _Cell
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 logger = logging.getLogger("gpzu-bot.gp_builder")
 
-# ----------------- Таблица координат ----------------- #
+# ----------------- Таблица координат (как в docx_builder.py) ----------------- #
 
 COL_W = [Cm(4.50), Cm(6.69), Cm(6.69)]
 MARKER_COORDS = "[[COORDS_TABLE]]"
@@ -98,10 +100,10 @@ class GPBuilder:
 
     Работает по шагам:
     1. Заполняет Jinja2-переменные в шаблоне `gpzu_template.docx`
-    2. Вставляет таблицу координат
-    3. Вставляет таблицы объектов капитального строительства (раздел 3.1)
-    4. Вставляет блоки территориальных зон (ВРИ и параметры) из `data/tz_reglament`
-    5. Заполняет таблицу ЗОУИТ и подставляет блоки ограничений из `data/zouit_reglament`
+    2. Вставляет блоки территориальных зон (ВРИ и параметры) из `data/tz_reglament`
+    3. Заполняет таблицу ЗОУИТ и подставляет блоки ограничений из `data/zouit_reglament`
+    4. Вставляет таблицу координат участка в место маркера `[[COORDS_TABLE]]`
+    5. Вставляет таблицы объектов капитального строительства (ОКС) в раздел 3.1
     """
 
     def __init__(self, template_path: str, data_dir: Optional[str] = None):
@@ -114,19 +116,19 @@ class GPBuilder:
 
         Структура проекта:
 
-            gpzu-web/
-            ├── backend/
-            │   ├── generator/
-            │   │   └── gp_builder.py   ← этот файл
-            │   ├── templates/
-            │   │   └── gpzu_template.docx
-            │   └── data/
-            │       ├── tz_reglament/
-            │       └── zouit_reglament/
+            gpzu-bot/
+            ├── bot.py
+            ├── generator/
+            │   └── gp_builder.py   ← этот файл
+            ├── templates/
+            │   └── gpzu_template.docx
+            └── data/
+                ├── tz_reglament/
+                └── zouit_reglament/
         """
         self.template_path = str(template_path)
 
-        base_dir = Path(__file__).resolve().parent.parent  # .../backend
+        base_dir = Path(__file__).resolve().parent.parent  # .../gpzu-bot
         if data_dir is None:
             self.data_dir = base_dir / "data"
         else:
@@ -144,7 +146,7 @@ class GPBuilder:
         logger.info(f"GPBuilder: zouit_dir: {self.zouit_dir}")
 
     # ------------------------------------------------------------------ #
-    #   ЗОУИТ: подбор файла блока по названию (ПОЛНАЯ ЛОГИКА)
+    #   ЗОУИТ: подбор файла блока по названию (общая логика)
     # ------------------------------------------------------------------ #
     def get_zouit_block_filename(self, zouit_name: str) -> Optional[str]:
         """
@@ -152,140 +154,127 @@ class GPBuilder:
 
         Файлы лежат в `data/zouit_reglament`:
 
-            55_vodoohr_pribr_bereg.docx              – водоохранная зона прибрежная
-            56_sanzona.docx                          – санитарно-защитные зоны
-            57_electro.docx                          – охранные зоны ВЛ/КЛ электросетей
-            57_gazoraspredelitelnyh_setey.docx       – охранные зоны газораспределительных сетей
-            57_linii_i_sooruzheniy_svyazi.docx       – охранные зоны линий связи
-            57_teplovyh_setey.docx                   – охранные зоны тепловых сетей
-            58_ohrany_obektov_kulturnogo_naslediya.docx – охрана ОКН
-            59_zatopleniya_i_podtopleniya_territoriy.docx – зоны затопления/подтопления
-            60_ohrannye_zony_pn_nablyudeniya_okr_sredy.docx – охранные зоны наблюдения окр.среды
-            61_ohrannye_zony_geodezicheskoy_seti.docx – охранные зоны геодезической сети
-            62_zony_magistralnyh_truboprovodov.docx  – зоны магистральных трубопроводов
-            63_zony_radiotehnicheskogo_obekta.docx   – зоны радиотехнического объекта
-            64_aeroport_full.docx                    – приаэродромная территория (в целом)
-            64_aeroport_podzona1-7.docx              – подзоны 1-7 приаэродромной территории
-            65_sanitarnaya_zona_istochnikov_vodosnabzheniya.docx – санитарная зона источников
-            66_ohrannaya_zona_jeleznodorog.docx      – охранная зона железных дорог
+            56_sanzona.docx              – санитарно-защитные зоны
+            57_electro.docx              – охранные зоны объектов электросетевого хозяйства
+            58_gaz.docx                  – охранные зоны газораспределительных сетей
+            59_teplo.docx                – охранные зоны тепловых сетей
+            60_vodosnab.docx             – охранные зоны водоснабжения
+            61_kanalizacia.docx          – охранные зоны канализации
+            62_svyaz.docx                – охранные зоны сооружений связи
+            63_nefteprodukt.docx         – охранные зоны нефтепроводов/нефтепродуктопроводов
+            64_aeroport_full.docx        – приаэродромная территория (в целом)
+            64_aeroport_1.docx           – первая подзона приаэродромной территории
+            64_aeroport_2.docx           – вторая подзона
+            64_aeroport_3.docx           – третья подзона
+            64_aeroport_4.docx           – четвертая подзона
+            64_aeroport_5.docx           – пятая подзона
+            64_aeroport_6.docx           – шестая подзона
+            65_zhd.docx                  – охранные зоны железных дорог
+            67_auto.docx                 – придорожные полосы автодорог
+            89_vodnyj.docx               – водоохранные зоны
+            102_lesnye.docx              – защитные леса
+            105_oks_oborona.docx         – зоны охраны ОКС обороны и безопасности
+            106_oks_ino.docx             – зоны охраны ОКС иностранных государств
+            107_spec.docx                – зоны специального назначения (кладбища, скотомогильники)
         """
-        # Нормализуем название: в нижний регистр, убираем кавычки
-        name = (zouit_name or "").lower()
-        name_clean = name.replace('"', '').replace("'", '').replace('«', '').replace('»', '')
+        # Нормализация: убираем лишние пробелы, приводим к нижнему регистру
+        name = (zouit_name or "").strip().lower()
         
-        # 1. ЭЛЕКТРОСЕТЕВОЕ ХОЗЯЙСТВО (ВЛ/КЛ)
+        # Убираем разные виды кавычек и заменяем на пробелы для единообразия
+        name = name.replace('"', ' ').replace('«', ' ').replace('»', ' ').replace("'", ' ')
+        name = ' '.join(name.split())  # Убираем множественные пробелы
+
+        # === САНИТАРНО-ЗАЩИТНЫЕ ЗОНЫ (Статья 56) ===
+        if any(k in name for k in ["санитар", "санитарно-защит", "санитарно защит", "сзз"]):
+            return "56_sanzona.docx"
+
+        # === ЭЛЕКТРОСЕТЕВОЕ ХОЗЯЙСТВО (Статья 57) ===
         electro_keywords = [
             "охранная зона объектов электросетевого хозяйства",
             "охранная зона вл",
             "охранная зона кл",
+            "электроэнергетики",
+            "сооружение линейное электротехническое",
+            "воздушной линии электропередачи",
+            "электропередач",
             "вл-кл",
             "воздушная линия",
             "кабельная линия",
-            "электропередач",
-            "электроэнергетики",
-            "сооружение линейное электротехническое",
-            "линия электропередачи",
         ]
-        if any(k in name_clean for k in electro_keywords):
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 57_electro.docx (электросети)")
+        if any(k in name for k in electro_keywords):
             return "57_electro.docx"
-        
-        # 2. ТЕПЛОВЫЕ СЕТИ
-        if "теплов" in name or "теплосна" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 57_teplovyh_setey.docx (тепловые сети)")
-            return "57_teplovyh_setey.docx"
-        
-        # 3. ГАЗОРАСПРЕДЕЛИТЕЛЬНЫЕ СЕТИ
-        if "газораспределител" in name or "газовые сети" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 57_gazoraspredelitelnyh_setey.docx (газовые сети)")
-            return "57_gazoraspredelitelnyh_setey.docx"
-        
-        # 4. ЛИНИИ И СООРУЖЕНИЯ СВЯЗИ
-        if "связь" in name or "линии связи" in name or "сооружения связи" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 57_linii_i_sooruzheniy_svyazi.docx (связь)")
-            return "57_linii_i_sooruzheniy_svyazi.docx"
-        
-        # 5. САНИТАРНО-ЗАЩИТНЫЕ ЗОНЫ
-        if "санитарно-защит" in name or "санитарно защит" in name or "ссз" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 56_sanzona.docx (СЗЗ)")
-            return "56_sanzona.docx"
-        
-        # 6. САНИТАРНАЯ ЗОНА ИСТОЧНИКОВ ВОДОСНАБЖЕНИЯ
-        if "санитарная зона источник" in name or "источник водоснабжен" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 65_sanitarnaya_zona_istochnikov_vodosnabzheniya.docx")
-            return "65_sanitarnaya_zona_istochnikov_vodosnabzheniya.docx"
-        
-        # 7. ВОДООХРАННАЯ ЗОНА / ПРИБРЕЖНАЯ ЗАЩИТНАЯ ПОЛОСА
-        if "водоохран" in name or "прибрежн" in name or "водный объект" in name or "водоток" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 55_vodoohr_pribr_bereg.docx (водоохранная)")
-            return "55_vodoohr_pribr_bereg.docx"
-        
-        # 8. ПРИАЭРОДРОМНАЯ ТЕРРИТОРИЯ / ПОДЗОНЫ
+
+        # === ГАЗОРАСПРЕДЕЛИТЕЛЬНЫЕ СЕТИ (Статья 58) ===
+        if any(k in name for k in ["газ", "газораспределительн", "газопровод", "газоснабжен"]):
+            return "58_gaz.docx"
+
+        # === ТЕПЛОВЫЕ СЕТИ (Статья 59) ===
+        if any(k in name for k in ["тепло", "теплотрасс", "теплосет", "теплоснабжен"]):
+            return "59_teplo.docx"
+
+        # === ВОДОСНАБЖЕНИЕ (Статья 60) ===
+        if any(k in name for k in ["водоснабжен", "водопровод"]):
+            return "60_vodosnab.docx"
+
+        # === КАНАЛИЗАЦИЯ (Статья 61) ===
+        if any(k in name for k in ["канализац", "водоотведен"]):
+            return "61_kanalizacia.docx"
+
+        # === СООРУЖЕНИЯ СВЯЗИ (Статья 62) ===
+        if any(k in name for k in ["связь", "линии связи", "кабельн связ"]):
+            return "62_svyaz.docx"
+
+        # === НЕФТЕПРОВОДЫ/НЕФТЕПРОДУКТОПРОВОДЫ (Статья 63) ===
+        if any(k in name for k in ["нефтепровод", "нефтепродуктопровод", "магистральн трубопровод"]):
+            return "63_nefteprodukt.docx"
+
+        # === ПРИАЭРОДРОМНАЯ ТЕРРИТОРИЯ (Статья 64) ===
         if "приаэродром" in name or "аэродром" in name or "аэропорт" in name:
-            # Определяем подзону по номеру
-            if "первая" in name or "подзона 1" in name or "подзоны 1" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona1.docx")
-                return "64_aeroport_podzona1.docx"
-            elif "вторая" in name or "подзона 2" in name or "подзоны 2" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona2.docx")
-                return "64_aeroport_podzona2.docx"
-            elif "третья" in name or "третей" in name or "подзона 3" in name or "подзоны 3" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona3.docx")
-                return "64_aeroport_podzona3.docx"
-            elif "четверт" in name or "подзона 4" in name or "подзоны 4" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona4.docx")
-                return "64_aeroport_podzona4.docx"
-            elif "пятая" in name or "пятой" in name or "подзона 5" in name or "подзоны 5" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona5.docx")
-                return "64_aeroport_podzona5.docx"
-            elif "шестая" in name or "шестой" in name or "подзона 6" in name or "подзоны 6" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona6.docx")
-                return "64_aeroport_podzona6.docx"
-            elif "седьмая" in name or "седьмой" in name or "подзона 7" in name or "подзоны 7" in name:
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_podzona7.docx")
-                return "64_aeroport_podzona7.docx"
-            else:
-                # Общая приаэродромная территория
-                logger.info(f"✅ ЗОУИТ '{zouit_name}' → 64_aeroport_full.docx")
-                return "64_aeroport_full.docx"
-        
-        # 9. ОБЪЕКТЫ КУЛЬТУРНОГО НАСЛЕДИЯ (ОКН)
-        if "культурн" in name or "окн" in name or "памятник" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 58_ohrany_obektov_kulturnogo_naslediya.docx")
-            return "58_ohrany_obektov_kulturnogo_naslediya.docx"
-        
-        # 10. ЗОНЫ ЗАТОПЛЕНИЯ И ПОДТОПЛЕНИЯ
-        if "затопл" in name or "подтопл" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 59_zatopleniya_i_podtopleniya_territoriy.docx")
-            return "59_zatopleniya_i_podtopleniya_territoriy.docx"
-        
-        # 11. ОХРАННЫЕ ЗОНЫ НАБЛЮДЕНИЯ ЗА ОКРУЖАЮЩЕЙ СРЕДОЙ
-        if "наблюден" in name and ("окружающ" in name or "среды" in name):
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 60_ohrannye_zony_pn_nablyudeniya_okr_sredy.docx")
-            return "60_ohrannye_zony_pn_nablyudeniya_okr_sredy.docx"
-        
-        # 12. ОХРАННЫЕ ЗОНЫ ГЕОДЕЗИЧЕСКОЙ СЕТИ
-        if "геодезич" in name or "геодезическая сеть" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 61_ohrannye_zony_geodezicheskoy_seti.docx")
-            return "61_ohrannye_zony_geodezicheskoy_seti.docx"
-        
-        # 13. ЗОНЫ МАГИСТРАЛЬНЫХ ТРУБОПРОВОДОВ
-        if "магистральн" in name and "трубопровод" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 62_zony_magistralnyh_truboprovodov.docx")
-            return "62_zony_magistralnyh_truboprovodov.docx"
-        
-        # 14. ЗОНЫ РАДИОТЕХНИЧЕСКОГО ОБЪЕКТА
-        if "радиотехнич" in name or "радиолокац" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 63_zony_radiotehnicheskogo_obekta.docx")
-            return "63_zony_radiotehnicheskogo_obekta.docx"
-        
-        # 15. ОХРАННАЯ ЗОНА ЖЕЛЕЗНЫХ ДОРОГ
-        if "железн" in name or "жд" in name or "железнодорож" in name:
-            logger.info(f"✅ ЗОУИТ '{zouit_name}' → 66_ohrannaya_zona_jeleznodorog.docx")
-            return "66_ohrannaya_zona_jeleznodorog.docx"
-        
-        # НЕ НАЙДЕНО
-        logger.warning(f"❌ Не удалось подобрать файл ЗОУИТ по названию: '{zouit_name}'")
+            # Подзоны
+            if "перв" in name and "подзон" in name:
+                return "64_aeroport_1.docx"
+            if "втор" in name and "подзон" in name:
+                return "64_aeroport_2.docx"
+            if "трет" in name and "подзон" in name:
+                return "64_aeroport_3.docx"
+            if "четверт" in name and "подзон" in name:
+                return "64_aeroport_4.docx"
+            if "пят" in name and "подзон" in name:
+                return "64_aeroport_5.docx"
+            if "шест" in name and "подзон" in name:
+                return "64_aeroport_6.docx"
+            # Если подзона не указана — общий файл
+            return "64_aeroport_full.docx"
+
+        # === ЖЕЛЕЗНЫЕ ДОРОГИ (Статья 65) ===
+        if any(k in name for k in ["железн дорог", "железнодорожн", "жд ", " жд"]):
+            return "65_zhd.docx"
+
+        # === ПРИДОРОЖНЫЕ ПОЛОСЫ АВТОДОРОГ (Статья 67) ===
+        if any(k in name for k in ["придорожн", "автодорог", "автомобильн дорог"]):
+            return "67_auto.docx"
+
+        # === ВОДООХРАННЫЕ ЗОНЫ (Статья 89 ВК РФ) ===
+        if any(k in name for k in ["водоохран", "прибрежн защитн полос", "водных объект"]):
+            return "89_vodnyj.docx"
+
+        # === ЗАЩИТНЫЕ ЛЕСА (Статья 102 ЛК РФ) ===
+        if any(k in name for k in ["защитн лес", "лесн участк", "леса"]):
+            return "102_lesnye.docx"
+
+        # === ОКС ОБОРОНЫ И БЕЗОПАСНОСТИ (Статья 105 ЗК РФ) ===
+        if any(k in name for k in ["оборон", "безопасност", "военн объект"]):
+            return "105_oks_oborona.docx"
+
+        # === ОКС ИНОСТРАННЫХ ГОСУДАРСТВ (Статья 106 ЗК РФ) ===
+        if any(k in name for k in ["иностранн государств", "дипломатическ", "консульск"]):
+            return "106_oks_ino.docx"
+
+        # === ЗОНЫ СПЕЦИАЛЬНОГО НАЗНАЧЕНИЯ (Статья 107 ЗК РФ) ===
+        if any(k in name for k in ["кладбищ", "скотомогильник", "специальн назначен"]):
+            return "107_spec.docx"
+
+        logger.warning(f"Не удалось подобрать файл ЗОУИТ по названию: {zouit_name!r}")
         return None
 
     # Совместимость с test_gp_builder.py
@@ -304,7 +293,7 @@ class GPBuilder:
         Возвращает Path к файлу блока ЗОУИТ с учётом спец-логики:
 
         - если registry_number == "42:00-6.1695" → 64_aeroport_full.docx
-        - если registry_number == "42:00-6.1698" → 64_aeroport_podzona4.docx
+        - если в name есть слово "четвертая" → 64_aeroport_4.docx
         - иначе используется стандартное сопоставление по названию
           (get_zouit_block_filename).
         """
@@ -313,15 +302,13 @@ class GPBuilder:
 
         filename: Optional[str]
 
-        # Специальные случаи по реестровому номеру (приоритет!)
+        # Специальный случай – приаэродромная территория целиком
         if registry_number == "42:00-6.1695":
             filename = "64_aeroport_full.docx"
-            logger.info(f"✅ ЗОУИТ по номеру '{registry_number}' → {filename}")
-        elif registry_number == "42:00-6.1698":
-            filename = "64_aeroport_podzona4.docx"
-            logger.info(f"✅ ЗОУИТ по номеру '{registry_number}' → {filename}")
+        # Специальный случай – четвертая подзона
+        elif "четверт" in name.lower():
+            filename = "64_aeroport_4.docx"
         else:
-            # Стандартное определение по названию
             filename = self.get_zouit_block_filename(name)
 
         if not filename:
@@ -442,6 +429,8 @@ class GPBuilder:
         context["zouit_formatted"] = formatted
 
         # --- Сохранить маркеры вставки блоков после рендера Jinja ---
+        # Иначе Jinja превратит {{INSERT_ZONE_VRI}} и другие в пустую строку,
+        # и методы вставки блоков не найдут свои маркеры в документе.
         context["INSERT_ZONE_VRI"] = "{{INSERT_ZONE_VRI}}"
         context["INSERT_ZONE_PARAMS"] = "{{INSERT_ZONE_PARAMS}}"
         context["INSERT_ZOUIT_BLOCKS"] = "{{INSERT_ZOUIT_BLOCKS}}"
@@ -563,9 +552,6 @@ class GPBuilder:
         # Убираем маркер из текста, но сам параграф оставляем как якорь
         marker_para.text = marker_para.text.replace(marker, "").strip()
 
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
-
         body = marker_para._p.getparent()
         idx = body.index(marker_para._p)
 
@@ -681,7 +667,7 @@ class GPBuilder:
                     (объединена с [1,0])
                 [0,1]-[0,2] общий заголовок про перечень координат
             2-я строка:
-                [1,1] "X", [1,2] "Y"
+                [1,1] X, [1,2] Y
         - строки координат в том же порядке, как в coords.
         """
         if not coords:
@@ -741,193 +727,197 @@ class GPBuilder:
     # ------------------------------------------------------------------ #
     def insert_capital_objects_tables(self, doc: Document, capital_objects: List[Dict[str, Any]]) -> None:
         """
-        Вставляет таблицы объектов капитального строительства в раздел 3.1.
-        
-        Для каждого объекта создаётся отдельная таблица:
-        - №X (согласно чертежу)
-        - Назначение, этажность, площадь (если нет — красным "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ")
-        - Кадастровый номер
-        
-        Если объектов нет — создаётся одна пустая таблица-шаблон.
+        Вставляет таблицы объектов капитального строительства в раздел 3.1
+        на место маркера [[CAPITAL_OBJECTS_TABLES]].
+
+        Для каждого объекта создаётся отдельная таблица 3×2 с форматированием:
+        - Строка 1: [0,0] "№X" (12pt, тонкая граница снизу), 
+                    [0,1] "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" (красный, жирный, 12pt, тонкая граница снизу)
+        - Строка 2: [1,0] "(согласно чертежу(ам)...)" (серый RGB(128,128,128), 8pt, без границ),
+                    [1,1] "(назначение объекта...)" (серый, 8pt, без границ)
+        - Строка 3: [2,0] "инвентаризационный или кадастровый номер" (12pt, без нижней границы),
+                    [2,1] Кадастровый номер из JSON или "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" (красный, 12pt, тонкая граница снизу)
+
+        Если объектов нет — создаётся одна пустая таблица-шаблон с текстом:
+        - [0,0] "информация отсутствует" (12pt, тонкая граница снизу)
+        - [0,1] пустая ячейка (тонкая граница снизу)
+        - [1,0] "(согласно чертежу(ам)...)" (серый, 8pt)
+        - [1,1] "(назначение объекта...)" (серый, 8pt)
+        - [2,0] "инвентаризационный или кадастровый номер" (12pt)
+        - [2,1] пустая ячейка (тонкая граница снизу)
         """
-        from docx.oxml import OxmlElement
-        
         marker = "[[CAPITAL_OBJECTS_TABLES]]"
         
-        # Ищем параграф с маркером
-        marker_para = _find_paragraph_with_text(doc, marker)
-        if not marker_para:
+        marker_para = None
+        for para in doc.paragraphs:
+            if marker in para.text:
+                marker_para = para
+                break
+        
+        if marker_para is None:
             logger.warning(f"Маркер {marker!r} не найден для вставки таблиц ОКС")
             return
         
-        # Удаляем маркер
+        # Убираем маркер из текста
         marker_para.text = marker_para.text.replace(marker, "").strip()
         
-        # Получаем родителя и позицию вставки
         body = marker_para._p.getparent()
         idx = body.index(marker_para._p)
         
-        # Если объектов нет — создаём одну пустую таблицу
         if not capital_objects:
-            logger.info("ОКС отсутствуют, создаём пустую таблицу-шаблон")
+            # Если объектов нет — создаём одну пустую таблицу
+            logger.info("Объекты капитального строительства отсутствуют, создаём пустую таблицу")
             table = self._create_oks_table(doc, None, 1)
             body.insert(idx + 1, table._tbl)
-            return
+        else:
+            # Если объекты есть — создаём таблицу для каждого
+            logger.info(f"Создаём {len(capital_objects)} таблиц ОКС")
+            for i, obj in enumerate(capital_objects, start=1):
+                table = self._create_oks_table(doc, obj, i)
+                body.insert(idx + 1, table._tbl)
+                idx += 1
+                
+                # Пустой абзац между таблицами (кроме последней)
+                if i < len(capital_objects):
+                    empty_p = OxmlElement("w:p")
+                    body.insert(idx + 1, empty_p)
+                    idx += 1
         
-        # Создаём таблицу для каждого объекта
-        insert_offset = 1
-        for i, obj in enumerate(capital_objects, start=1):
-            table = self._create_oks_table(doc, obj, i)
-            body.insert(idx + insert_offset, table._tbl)
-            insert_offset += 1
-            
-            # Добавляем пустой параграф между таблицами
-            if i < len(capital_objects):
-                empty_p = OxmlElement("w:p")
-                body.insert(idx + insert_offset, empty_p)
-                insert_offset += 1
-        
-        logger.info(f"Вставлено таблиц ОКС: {len(capital_objects)}")
+        logger.info("Таблицы ОКС вставлены в раздел 3.1")
 
     def _create_oks_table(self, doc: Document, obj: Optional[Dict[str, Any]], num: int) -> Table:
         """
-        Создаёт таблицу для одного объекта капитального строительства.
-        
-        Структура таблицы (3 строки × 2 колонки):
-        
-        ┌─────────────────────────────┬─────────────────────────────────────┐
-        │ Номер                       │ НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ (красн.)│
-        │ (шрифт 12, нижняя граница)  │ (шрифт 12, нижняя граница)          │
-        ├─────────────────────────────┼─────────────────────────────────────┤
-        │ (согласно чертежу(ам)...)   │ (назначение объекта капитального...)│
-        │ (шрифт 8)                   │ (шрифт 8)                           │
-        ├─────────────────────────────┼─────────────────────────────────────┤
-        │ инвентаризационный или      │ 42:30:... (шрифт 12, нижняя граница)│
-        │ кадастровый номер (шрифт 12)│                                     │
-        └─────────────────────────────┴─────────────────────────────────────┘
-        
-        Все ячейки выровнены по центру по горизонтали и вертикали.
-        Границы ячеек только снизу в строках 1 и 3.
+        Создаёт одну таблицу объекта капитального строительства.
+
+        Таблица 3×2 БЕЗ ГРАНИЦ:
+        - [0,0]: "№X" (если есть объекты) или пустая (если нет) - тонкая граница снизу
+        - [0,1]: "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" (если есть объекты) или пустая (если нет) - тонкая граница снизу
+        - [1,0]: "(согласно чертежу(ам)...)" - без границ
+        - [1,1]: "(назначение объекта...)" - без границ
+        - [2,0]: "инвентаризационный или кадастровый номер" - без границ
+        - [2,1]: Кадастровый номер или пустая - тонкая граница снизу
+
+        Args:
+            doc: Документ Word
+            obj: Словарь с данными объекта (может быть None, если объектов нет)
+            num: Номер объекта (для нумерации №1, №2, №3...)
+
+        Returns:
+            Table: Созданная таблица
         """
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
-        
-        # Создаём таблицу 3×2
+        # Создаём таблицу 3×2 БЕЗ СТИЛЯ (без границ)
         table = doc.add_table(rows=3, cols=2)
         
-        # Убираем стиль (границы будем добавлять вручную)
-        try:
-            table.style = None
-        except Exception:
-            pass
-        
-        # Устанавливаем ширину колонок (примерно 50/50)
+        # Ширина колонок: 8.5 см каждая
+        col_width = Cm(8.5)
         for row in table.rows:
-            row.cells[0].width = Cm(8.5)
-            row.cells[1].width = Cm(8.5)
+            for cell in row.cells:
+                cell.width = col_width
         
-        # Функция для добавления нижней границы
+        # Функция добавления тонкой нижней границы
         def add_bottom_border(cell):
-            """Добавляет нижнюю границу к ячейке"""
+            """Добавляет тонкую нижнюю границу к ячейке"""
             tc = cell._element
             tcPr = tc.get_or_add_tcPr()
             tcBorders = OxmlElement('w:tcBorders')
             bottom = OxmlElement('w:bottom')
             bottom.set(qn('w:val'), 'single')
-            bottom.set(qn('w:sz'), '12')  # Толщина границы
+            bottom.set(qn('w:sz'), '2')  # Очень тонкая граница
             bottom.set(qn('w:space'), '0')
-            bottom.set(qn('w:color'), '000000')  # Чёрный цвет
+            bottom.set(qn('w:color'), '000000')
             tcBorders.append(bottom)
             tcPr.append(tcBorders)
         
-        # ========== СТРОКА 1: Номер и "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" ========== #
+        # === СТРОКА 1 === #
+        cell_0_0 = table.rows[0].cells[0]
+        cell_0_1 = table.rows[0].cells[1]
         
-        # Ячейка [0,0]: Номер
-        cell_00 = table.rows[0].cells[0]
-        cell_00.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        # Выравнивание
+        cell_0_0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        cell_0_1.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         
-        p1 = cell_00.paragraphs[0]
+        # [0,0]: "№X" или пустая
+        p1 = cell_0_0.paragraphs[0]
         p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run1 = p1.add_run(f"Номер")
-        run1.font.size = Pt(12)
-        run1.font.name = 'Times New Roman'
         
-        # Добавляем нижнюю границу
-        add_bottom_border(cell_00)
+        if obj:
+            # Если есть объект — выводим номер
+            run1 = p1.add_run(f"№{num}")
+            run1.font.name = "Times New Roman"
+            run1.font.size = Pt(12)
+        # Иначе ячейка остаётся пустой
         
-        # Ячейка [0,1]: "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" (красным)
-        cell_01 = table.rows[0].cells[1]
-        cell_01.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        # Тонкая граница снизу
+        add_bottom_border(cell_0_0)
         
-        p2 = cell_01.paragraphs[0]
+        # [0,1]: "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ" или пустая
+        p2 = cell_0_1.paragraphs[0]
         p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run2 = p2.add_run("НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ")
-        run2.font.size = Pt(12)
-        run2.font.name = 'Times New Roman'
-        run2.font.color.rgb = RGBColor(255, 0, 0)
-        run2.bold = True
         
-        # Добавляем нижнюю границу
-        add_bottom_border(cell_01)
+        if obj:
+            # Если есть объект — красный текст
+            run2 = p2.add_run("НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ")
+            run2.font.name = "Times New Roman"
+            run2.font.size = Pt(12)
+            run2.font.color.rgb = RGBColor(255, 0, 0)
+            run2.bold = True
+        # Иначе ячейка остаётся пустой
         
-        # ========== СТРОКА 2: Описания (серым, шрифт 8) ========== #
+        # Тонкая граница снизу
+        add_bottom_border(cell_0_1)
         
-        # Ячейка [1,0]: "(согласно чертежу(ам)...)"
-        cell_10 = table.rows[1].cells[0]
-        cell_10.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        # === СТРОКА 2 === #
+        cell_1_0 = table.rows[1].cells[0]
+        cell_1_1 = table.rows[1].cells[1]
         
-        p3 = cell_10.paragraphs[0]
+        # Выравнивание
+        cell_1_0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        cell_1_1.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        
+        # [1,0]: "(согласно чертежу(ам)...)" - БЕЗ ГРАНИЦ
+        p3 = cell_1_0.paragraphs[0]
         p3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run3 = p3.add_run("(согласно чертежу(ам) градостроительного плана)")
+        run3 = p3.add_run("(согласно чертежу(ам) планировки территории)")
+        run3.font.name = "Times New Roman"
         run3.font.size = Pt(8)
-        run3.font.name = 'Times New Roman'
         run3.font.color.rgb = RGBColor(128, 128, 128)
         
-        # Ячейка [1,1]: "(назначение объекта...)"
-        cell_11 = table.rows[1].cells[1]
-        cell_11.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        
-        p4 = cell_11.paragraphs[0]
+        # [1,1]: "(назначение объекта...)" - БЕЗ ГРАНИЦ
+        p4 = cell_1_1.paragraphs[0]
         p4.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run4 = p4.add_run("(назначение объекта капитального строительства, этажность, высотность, общая площадь, площадь застройки)")
+        run4 = p4.add_run("(назначение объекта капитального строительства, этажность, высотность, общая площадь,  площадь застройки)")
+        run4.font.name = "Times New Roman"
         run4.font.size = Pt(8)
-        run4.font.name = 'Times New Roman'
         run4.font.color.rgb = RGBColor(128, 128, 128)
         
-        # ========== СТРОКА 3: Описание поля и кадастровый номер ========== #
+        # === СТРОКА 3 === #
+        cell_2_0 = table.rows[2].cells[0]
+        cell_2_1 = table.rows[2].cells[1]
         
-        # Ячейка [2,0]: "инвентаризационный или кадастровый номер"
-        cell_20 = table.rows[2].cells[0]
-        cell_20.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        # Выравнивание
+        cell_2_0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        cell_2_1.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         
-        p5 = cell_20.paragraphs[0]
+        # [2,0]: "инвентаризационный или кадастровый номер" - БЕЗ ГРАНИЦ
+        p5 = cell_2_0.paragraphs[0]
         p5.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run5 = p5.add_run("инвентаризационный или кадастровый номер")
+        run5.font.name = "Times New Roman"
         run5.font.size = Pt(12)
-        run5.font.name = 'Times New Roman'
         
-        # Ячейка [2,1]: Кадастровый номер (или "НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ")
-        cell_21 = table.rows[2].cells[1]
-        cell_21.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        
-        p6 = cell_21.paragraphs[0]
+        # [2,1]: Кадастровый номер или пустая
+        p6 = cell_2_1.paragraphs[0]
         p6.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         if obj and obj.get("cadnum"):
-            # Если есть кадастровый номер
+            # Если есть кадастровый номер — выводим его
             run6 = p6.add_run(obj["cadnum"])
+            run6.font.name = "Times New Roman"
             run6.font.size = Pt(12)
-            run6.font.name = 'Times New Roman'
-        else:
-            # Если нет кадастрового номера
-            run6 = p6.add_run("НЕОБХОДИМО ЗАПОЛНИТЬ ДАННЫЕ")
-            run6.font.size = Pt(12)
-            run6.font.name = 'Times New Roman'
-            run6.font.color.rgb = RGBColor(255, 0, 0)
-            run6.bold = True
+        # Иначе ячейка остаётся пустой
         
-        # Добавляем нижнюю границу
-        add_bottom_border(cell_21)
+        # Тонкая граница снизу
+        add_bottom_border(cell_2_1)
         
         return table
 
@@ -941,7 +931,7 @@ class GPBuilder:
         Шаги:
         1. Рендерим Jinja2-шаблон (DocxTemplate)
         2. Добавляем таблицу координат
-        3. Добавляем таблицы объектов капитального строительства (раздел 3.1)
+        3. Добавляем таблицы ОКС
         4. Вставляем блоки территориальной зоны (ВРИ, параметры)
         5. Заполняем таблицу ЗОУИТ и вставляем блоки ограничений
         6. Сохраняем итоговый файл
@@ -967,11 +957,11 @@ class GPBuilder:
         else:
             logger.info("Координаты участка в данных отсутствуют")
 
-        # --- 2.5. Таблицы объектов капитального строительства (раздел 3.1) ---
+        # --- 3. Таблицы ОКС ---
         capital_objects = gp_data.get("capital_objects") or []
         self.insert_capital_objects_tables(doc, capital_objects)
 
-        # --- 3. Блоки территориальных зон ---
+        # --- 4. Блоки территориальных зон ---
         zone = gp_data.get("zone") or {}
         zone_code = zone.get("code")
         if zone_code:
@@ -989,7 +979,7 @@ class GPBuilder:
             else:
                 logger.warning(f"Не найден блок параметров для зоны {zone_code}")
 
-        # --- 4. ЗОУИТ ---
+        # --- 5. ЗОУИТ ---
         zouit_list = gp_data.get("zouit") or []
         if zouit_list:
             self.fill_zouit_table(doc, zouit_list)
@@ -997,7 +987,7 @@ class GPBuilder:
         else:
             logger.info("ЗОУИТ для участка отсутствуют")
 
-        # --- 5. Сохранение результата ---
+        # --- 6. Сохранение результата ---
         out_path = Path(output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(str(out_path))
@@ -1018,11 +1008,10 @@ def generate_gp_document(gp_data: Dict[str, Any], output_path: str) -> str:
 
     Использует структуру проекта:
 
-        gpzu-web/
-        ├── backend/
-        │   ├── generator/gp_builder.py
-        │   ├── templates/gpzu_template.docx
-        │   └── data/...
+        gpzu-bot/
+        ├── generator/gp_builder.py
+        ├── templates/gpzu_template.docx
+        └── data/...
 
     Поэтому путь к шаблону и data определяются относительно расположения
     текущего файла, а не текущей рабочей директории.

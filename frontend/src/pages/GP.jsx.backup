@@ -3,8 +3,7 @@ import { Card, Row, Col, Button } from 'antd';
 import { 
   ApiOutlined, 
   EnvironmentOutlined, 
-  FileProtectOutlined,
-  FileTextOutlined,
+  FileProtectOutlined,  // ← НОВОЕ
   ArrowLeftOutlined 
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -68,7 +67,7 @@ const GP = () => {
           </Card>
         </Col>
 
-        {/* TU - Оранжевая карточка */}
+        {/* TU - Оранжевая карточка (НОВОЕ) */}
         <Col xs={24} sm={12} lg={8}>
           <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/tu')}>
             <div className="module-icon-container" style={{ backgroundColor: '#fa8c16' }}>
@@ -83,27 +82,6 @@ const GP = () => {
               block 
               size="large" 
               style={{ backgroundColor: '#fa8c16', marginTop: 16 }}
-            >
-              Открыть
-            </Button>
-          </Card>
-        </Col>
-
-        {/* ГРАДПЛАН - Фиолетовая карточка */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/gradplan')}>
-            <div className="module-icon-container" style={{ backgroundColor: '#722ed1' }}>
-              <FileTextOutlined style={{ fontSize: 64, color: 'white' }} />
-            </div>
-            <h2 className="module-title">Сформировать ГПЗУ</h2>
-            <p className="module-description">
-              Автоматическое формирование градостроительного плана земельного участка
-            </p>
-            <Button 
-              type="primary" 
-              block 
-              size="large" 
-              style={{ backgroundColor: '#722ed1', marginTop: 16 }}
             >
               Открыть
             </Button>
