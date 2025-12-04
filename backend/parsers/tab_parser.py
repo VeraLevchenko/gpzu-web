@@ -1,7 +1,7 @@
 # parsers/tab_parser.py
 """
 Парсер TAB/MIF файлов MapInfo для пространственных слоёв.
-Содержит функции для чтения и анализа геопространственных данных.
+ОБНОВЛЕНО: Добавлена поддержка слоя районов с полем "Название_района"
 """
 
 from __future__ import annotations
@@ -92,25 +92,12 @@ def find_zone_for_parcel(coords: List[Tuple[float, float]], zones: List[Dict[str
     """
     Определить территориальную зону для участка по координатам.
     
-    Логика:
-    1. Находим ВСЕ зоны, которые пересекаются с участком
-    2. Вычисляем процент перекрытия для каждой зоны
-    3. Выбираем зону с МАКСИМАЛЬНЫМ перекрытием
-    4. Возвращаем выбранную зону + информацию о всех пересечениях
-    
     Args:
         coords: Координаты участка в формате [(y, x), ...]
         zones: Список зон с геометрией
     
     Returns:
-        Словарь с информацией о зоне:
-        {
-            "code": код зоны,
-            "name": название зоны,
-            "multiple_zones": True/False,
-            "all_zones": список всех пересечений,
-            "overlap_percent": процент перекрытия
-        }
+        Словарь с информацией о зоне
     """
     if not coords or len(coords) < 3:
         logger.warning("Недостаточно координат для построения полигона")
@@ -155,9 +142,6 @@ def find_zone_for_parcel(coords: List[Tuple[float, float]], zones: List[Dict[str
         best_zone = intersecting_zones[0]
         
         # Определяем, попадает ли участок в несколько зон
-        # Флаг устанавливается только если:
-        # 1. Зон больше одной И
-        # 2. Основная зона покрывает менее 100% участка
         multiple_zones = len(intersecting_zones) > 1 and best_zone['overlap_percent'] < 99.9
         
         if multiple_zones:
@@ -187,6 +171,80 @@ def find_zone_for_parcel(coords: List[Tuple[float, float]], zones: List[Dict[str
         
     except Exception as ex:
         logger.error(f"Ошибка при определении зоны: {ex}")
+        return None
+
+
+# НОВОЕ: Функции для работы с районами
+def parse_districts_layer(tab_path: Path | str) -> List[Dict[str, Any]]:
+    """
+    Парсинг слоя районов города.
+    
+    Args:
+        tab_path: Путь к TAB-файлу с районами
+    
+    Returns:
+        Список районов с геометрией и атрибутами
+    """
+    gdf = read_tab_file(tab_path)
+    if gdf is None or gdf.empty:
+        return []
+    
+    districts = []
+    
+    # ОБНОВЛЕНО: Поля для районов согласно структуре файла Районы.TAB
+    CODE_FIELDS = ["DISTRICT_CODE", "CODE", "Код", "КОД", "Номер", "НОМЕР", "ID"]
+    NAME_FIELDS = ["Название_района", "DISTRICT_NAME", "NAME", "Наименование", "НАИМЕНОВАНИЕ", "Название", "НАЗВАНИЕ", "Район"]
+    
+    for idx, row in gdf.iterrows():
+        district = {
+            "code": get_field_value(row, CODE_FIELDS),
+            "name": get_field_value(row, NAME_FIELDS),  # Здесь будет значение из поля "Название_района"
+            "geometry": row.get('geometry'),
+        }
+        districts.append(district)
+    
+    logger.info(f"Загружено районов из {Path(tab_path).name}: {len(districts)}")
+    return districts
+
+
+def find_district_for_parcel(coords: List[Tuple[float, float]], districts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    Определить район для участка по координатам.
+    
+    Args:
+        coords: Координаты участка в формате [(север, восток), ...]
+        districts: Список районов с геометрией
+    
+    Returns:
+        Словарь с информацией о районе: {"code": "...", "name": "..."}
+    """
+    if not coords or len(coords) < 3:
+        logger.warning("Недостаточно координат для определения района")
+        return None
+    
+    try:
+        parcel_polygon = Polygon(coords)
+        
+        for district in districts:
+            district_geom = district.get('geometry')
+            if district_geom is None:
+                continue
+            
+            # Проверяем пересечение
+            if parcel_polygon.intersects(district_geom):
+                result = {
+                    "code": district.get('code'),
+                    "name": district.get('name'),  # Значение из поля "Название_района"
+                }
+                
+                logger.info(f"Район определён: {result['name']} (код: {result['code']})")
+                return result
+        
+        logger.warning("Район не найден для участка")
+        return None
+        
+    except Exception as ex:
+        logger.error(f"Ошибка при определении района: {ex}")
         return None
 
 

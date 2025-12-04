@@ -30,6 +30,7 @@ class ParcelInfo:
     region: Optional[str] = None
     municipality: Optional[str] = None
     settlement: Optional[str] = None
+    district: Optional[str] = None  # НОВОЕ: район города
     permitted_use: Optional[str] = None
     coordinates: List[Dict[str, str]] = field(default_factory=list)
     capital_objects_egrn: List[str] = field(default_factory=list)
@@ -74,6 +75,22 @@ class TerritorialZoneInfo:
     @overlap_percent.setter
     def overlap_percent(self, value: Optional[float]):
         self._overlap_percent = value
+
+
+@dataclass
+class DistrictInfo:
+    """НОВОЕ: Информация о районе города"""
+    name: Optional[str] = None
+    code: Optional[str] = None
+    
+    def get_display_name(self) -> str:
+        """Получить название для отображения"""
+        if self.name:
+            return self.name
+        elif self.code:
+            return f"Район {self.code}"
+        else:
+            return "Район не определён"
 
 
 @dataclass
@@ -195,6 +212,7 @@ class GPData:
     application: ApplicationInfo = field(default_factory=ApplicationInfo)
     parcel: ParcelInfo = field(default_factory=ParcelInfo)
     zone: TerritorialZoneInfo = field(default_factory=TerritorialZoneInfo)
+    district: DistrictInfo = field(default_factory=DistrictInfo)  # НОВОЕ: информация о районе
     capital_objects: List[CapitalObject] = field(default_factory=list)
     planning_project: PlanningProject = field(default_factory=PlanningProject)
     zouit: List[RestrictionZone] = field(default_factory=list)
@@ -259,6 +277,8 @@ class GPData:
         lines.append(f"  Кадастровый номер: {self.parcel.cadnum or '—'}")
         lines.append(f"  Адрес: {self.parcel.address or '—'}")
         lines.append(f"  Площадь: {self.parcel.area or '—'} кв. м")
+        # НОВОЕ: добавляем район в сводку
+        lines.append(f"  Район: {self.district.get_display_name()}")
         lines.append("")
         
         lines.append("📍 ТЕРРИТОРИАЛЬНАЯ ЗОНА:")
@@ -377,6 +397,7 @@ def create_gp_data_from_parsed(
         region=egrn_dict.get('region'),
         municipality=egrn_dict.get('municipality'),
         settlement=egrn_dict.get('settlement'),
+        district=egrn_dict.get('district'),  # НОВОЕ: район из ЕГРН (если есть)
         permitted_use=egrn_dict.get('permitted_use'),
         coordinates=coords_dicts,
         capital_objects_egrn=egrn_dict.get('capital_objects', []),

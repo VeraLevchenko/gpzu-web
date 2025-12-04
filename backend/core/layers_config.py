@@ -56,6 +56,12 @@ class LayerPaths:
         "/mnt/graphics/NOVOKUZ/ЗОНЫ КУЛЬТУРНОГО НАСЛЕДИЯ/Объекты культурного наследия.TAB"
     ))
     
+    # Районы города
+    DISTRICTS = Path(os.getenv(
+        "LAYER_DISTRICTS",
+        "/mnt/graphics/NOVOKUZ/Районы.TAB"
+    ))
+    
     # ===== ДОПОЛНИТЕЛЬНЫЕ СЛОИ ОКН ===== #
     
     # Зоны охраны ОКН
@@ -103,6 +109,7 @@ class LayerPaths:
             "okn": cls.OKN,
             "okn_zones": cls.OKN_ZONES,
             "okn_boundaries": cls.OKN_BOUNDARIES,
+            "districts": cls.DISTRICTS,  # НОВОЕ: добавляем районы в проверку
         }
         
         return {name: path.exists() for name, path in layers.items()}
@@ -127,6 +134,10 @@ class FieldMapping:
     # Территориальные зоны
     ZONE_NAME_FIELDS = ["ZONE_NAME", "NAME", "ZoneName", "Название", "Наименование", "НАИМЕНОВАНИЕ"]
     ZONE_CODE_FIELDS = ["ZONE_CODE", "CODE", "ZoneCode", "Код", "КОД", "Обозначение", "ОБОЗНАЧЕНИЕ"]
+    
+    # Районы города
+    DISTRICT_NAME_FIELDS = ["DISTRICT_NAME", "NAME", "DistrictName", "Название_района", "Наименование", "НАИМЕНОВАНИЕ", "Район"]
+    DISTRICT_CODE_FIELDS = ["DISTRICT_CODE", "CODE", "DistrictCode", "Код", "КОД", "Номер_района", "НОМЕР"]
     
     # Объекты капитального строительства (ACTUAL_OKSN)
     OBJECT_CADNUM_FIELDS = ["CADNUM", "CAD_NUM", "CadastralNumber", "КадастровыйНомер", "Кадастровый_номер", "КАДАСТРОВЫЙ_НОМЕР"]
@@ -203,6 +214,7 @@ def get_layers_status_report() -> str:
     
     lines.append("\nПути к слоям:")
     lines.append(f"  Зоны: {LayerPaths.ZONES}")
+    lines.append(f"  Районы: {LayerPaths.DISTRICTS}")  # НОВОЕ
     lines.append(f"  Объекты: {LayerPaths.CAPITAL_OBJECTS}")
     lines.append(f"  ППТ: {LayerPaths.PLANNING_PROJECTS}")
     lines.append(f"  ЗОУИТ: {LayerPaths.ZOUIT}")

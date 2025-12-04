@@ -146,6 +146,12 @@ async def spatial_analysis(request: Request):
                 "name": gp_data.zone.name if gp_data.zone else ""
             } if gp_data.zone else None,
             
+            # НОВОЕ: Добавляем информацию о районе
+            "district": {
+                "code": gp_data.district.code if gp_data.district else "",
+                "name": gp_data.district.name if gp_data.district else ""
+            } if gp_data.district else None,
+            
             "capital_objects": [
                 {
                     "cadnum": obj.cadnum,
@@ -180,7 +186,7 @@ async def spatial_analysis(request: Request):
             "errors": gp_data.errors
         }
         
-        logger.info(f"Анализ выполнен: зона={result.get('zone')}, ОКС={len(result['capital_objects'])}")
+        logger.info(f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, ОКС={len(result['capital_objects'])}")
         
         return JSONResponse(content={
             "success": True,

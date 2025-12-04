@@ -12,6 +12,7 @@ from typing import List, Tuple, Optional, Dict, Any
 from models.gp_data import (
     GPData,
     TerritorialZoneInfo,
+    DistrictInfo,  # НОВОЕ: импорт информации о районе
     CapitalObject,
     PlanningProject,
     RestrictionZone,
@@ -19,7 +20,9 @@ from models.gp_data import (
 from core.layers_config import LayerPaths
 from parsers.tab_parser import (
     parse_zones_layer,
+    parse_districts_layer,  # НОВОЕ: импорт парсера районов
     find_zone_for_parcel,
+    find_district_for_parcel,  # НОВОЕ: импорт функции поиска района
     parse_capital_objects_layer,
     find_objects_on_parcel,
     parse_planning_projects_layer,
@@ -41,19 +44,22 @@ def perform_spatial_analysis(gp_data: GPData) -> GPData:
         logger.error("Нет координат участка для анализа")
         return gp_data
     
-    logger.info("Этап 1/5: Определение территориальной зоны")
+    logger.info("Этап 1/6: Определение района города")  # НОВОЕ: добавился этап
+    _analyze_district(gp_data, coords)
+    
+    logger.info("Этап 2/6: Определение территориальной зоны")
     _analyze_zone(gp_data, coords)
     
-    logger.info("Этап 2/5: Поиск объектов капстроительства")
+    logger.info("Этап 3/6: Поиск объектов капстроительства")
     _analyze_capital_objects(gp_data, coords)
     
-    logger.info("Этап 3/5: Проверка проектов планировки")
+    logger.info("Этап 4/6: Проверка проектов планировки")
     _analyze_planning_projects(gp_data, coords)
     
-    logger.info("Этап 4/5: Проверка ЗОУИТ")
+    logger.info("Этап 5/6: Проверка ЗОУИТ")
     _analyze_zouit(gp_data, coords)
     
-    logger.info("Этап 5/5: Проверка прочих ограничений")
+    logger.info("Этап 6/6: Проверка прочих ограничений")
     _analyze_other_restrictions(gp_data, coords)
     
     gp_data.analysis_completed = True
@@ -104,6 +110,48 @@ def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
             logger.info(f"Границы участка: X({min_x:.2f}..{max_x:.2f}), Y({min_y:.2f}..{max_y:.2f})")
     
     return result
+
+
+def _analyze_district(gp_data: GPData, coords: List[Tuple[float, float]]):
+    """
+    НОВАЯ ФУНКЦИЯ: Определить район города для участка.
+    """
+    if not LayerPaths.DISTRICTS.exists():
+        msg = f"Слой районов не найден: {LayerPaths.DISTRICTS}"
+        logger.warning(msg)
+        gp_data.add_warning(msg)
+        # Устанавливаем пустой район
+        gp_data.district = DistrictInfo()
+        return
+    
+    try:
+        districts = parse_districts_layer(LayerPaths.DISTRICTS)
+        if not districts:
+            logger.warning("Слой районов пуст")
+            gp_data.add_warning("Слой районов не содержит данных")
+            gp_data.district = DistrictInfo()
+            return
+        
+        district_info = find_district_for_parcel(coords, districts)
+        if district_info:
+            gp_data.district = DistrictInfo(
+                name=district_info.get('name'),
+                code=district_info.get('code'),
+            )
+            logger.info(f"Район определён: {district_info.get('code')} {district_info.get('name')}")
+            
+            # Также можем сохранить район в parcel для совместимости
+            gp_data.parcel.district = gp_data.district.name
+        else:
+            logger.warning("Не удалось определить район участка")
+            gp_data.add_warning("Район города не определён")
+            gp_data.district = DistrictInfo()
+            
+    except Exception as ex:
+        msg = f"Ошибка при определении района: {ex}"
+        logger.exception(msg)
+        gp_data.add_error(msg)
+        gp_data.district = DistrictInfo()
 
 
 def _analyze_zone(gp_data: GPData, coords: List[Tuple[float, float]]):
