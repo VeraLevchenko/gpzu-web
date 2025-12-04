@@ -1,0 +1,452 @@
+/* frontend/src/components/GP/TuFlow.css */
+
+/* ============================================
+   КОНТЕЙНЕР И ОСНОВНЫЕ ЭЛЕМЕНТЫ
+   ============================================ */
+
+.tu-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 40px 20px;
+}
+
+.tu-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto 32px;
+  flex-wrap: wrap;
+}
+
+.tu-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.tu-card {
+  max-width: 1000px;
+  margin: 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================
+   ВЫБОР РЕЖИМА ВВОДА (ШАГ 0)
+   ============================================ */
+
+.mode-selection {
+  padding: 20px;
+}
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.mode-card {
+  text-align: center;
+  padding: 32px 24px;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.mode-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-color: #fa8c16;
+}
+
+.mode-card .anticon {
+  margin-bottom: 16px;
+}
+
+.mode-card h4 {
+  margin: 16px 0 8px 0;
+  font-size: 1.3rem;
+}
+
+.mode-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mode-card ul li {
+  padding: 4px 0;
+  color: #595959;
+}
+
+.mode-card ul li::before {
+  content: "✓ ";
+  color: #52c41a;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+/* ============================================
+   СЕКЦИИ ЗАГРУЗКИ ФАЙЛОВ
+   ============================================ */
+
+.upload-section {
+  padding: 40px 20px;
+}
+
+.upload-section h4 {
+  text-align: center;
+  color: #262626;
+}
+
+/* Dragger для заявления (синий) */
+.upload-section .ant-upload-drag {
+  border: 2px dashed #1890ff !important;
+  border-radius: 12px;
+  background: #f0f5ff !important;
+  transition: all 0.3s ease;
+}
+
+.upload-section .ant-upload-drag:hover {
+  border-color: #40a9ff !important;
+  background: #e6f7ff !important;
+}
+
+/* Dragger для ЕГРН (зелёный) */
+.upload-section:has(.ant-upload-drag[accept*=".xml"]) .ant-upload-drag {
+  border-color: #52c41a !important;
+  background: #f6ffed !important;
+}
+
+.upload-section:has(.ant-upload-drag[accept*=".xml"]) .ant-upload-drag:hover {
+  border-color: #73d13d !important;
+  background: #d9f7be !important;
+}
+
+.ant-upload-text {
+  font-size: 1.1rem;
+  color: #262626;
+  font-weight: 500;
+}
+
+.ant-upload-hint {
+  color: #8c8c8c;
+  margin-top: 8px;
+}
+
+/* ============================================
+   ФОРМА РУЧНОГО ВВОДА (ШАГ 1 MANUAL)
+   ============================================ */
+
+.manual-form-section {
+  padding: 40px 60px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.manual-form-section h4 {
+  text-align: center;
+  color: #262626;
+  margin-bottom: 32px;
+}
+
+.manual-form-section .ant-form-item-label > label {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.manual-form-section .ant-input {
+  border-radius: 8px;
+}
+
+.manual-form-section .ant-btn-primary {
+  height: 48px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #fa8c16 0%, #ff7a45 100%);
+  border: none;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.manual-form-section .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #ff9c3a 0%, #ff8a5b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(250, 140, 22, 0.3);
+}
+
+/* ============================================
+   СЕКЦИЯ ПОДТВЕРЖДЕНИЯ (ШАГ 3)
+   ============================================ */
+
+.confirmation-section {
+  padding: 20px;
+}
+
+.confirmation-section h4 {
+  text-align: center;
+  color: #262626;
+  margin-bottom: 24px;
+}
+
+.confirmation-section .ant-descriptions-item-label {
+  font-weight: 600;
+  background-color: #fafafa;
+}
+
+.confirmation-section .ant-card {
+  border-radius: 8px;
+}
+
+.confirmation-section .ant-btn-primary {
+  height: 52px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #fa8c16 0%, #ff7a45 100%);
+  border: none;
+  border-radius: 8px;
+}
+
+.confirmation-section .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #ff9c3a 0%, #ff8a5b 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(250, 140, 22, 0.4);
+}
+
+/* ============================================
+   STEPS (ИНДИКАТОР ПРОГРЕССА)
+   ============================================ */
+
+.tu-card .ant-steps {
+  margin-bottom: 40px;
+}
+
+/* Оранжевая тема для активного шага */
+.tu-card .ant-steps-item-process .ant-steps-item-icon {
+  background-color: #fa8c16;
+  border-color: #fa8c16;
+}
+
+.tu-card .ant-steps-item-process .ant-steps-item-icon .ant-steps-icon {
+  color: white;
+}
+
+.tu-card .ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: #fa8c16;
+}
+
+.tu-card .ant-steps-item-finish .ant-steps-item-icon {
+  border-color: #fa8c16;
+}
+
+.tu-card .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: #fa8c16;
+}
+
+.tu-card .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-tail::after {
+  background-color: #fa8c16;
+}
+
+/* ============================================
+   РЕЗУЛЬТАТ (ШАГ 4)
+   ============================================ */
+
+.tu-card .ant-result {
+  padding: 40px 20px;
+}
+
+.tu-card .ant-result-title {
+  font-size: 1.5rem;
+  color: #262626;
+}
+
+.tu-card .ant-result-subtitle {
+  font-size: 1rem;
+  color: #595959;
+}
+
+.tu-card .ant-result-extra {
+  margin-top: 32px;
+}
+
+.tu-card .ant-result-extra button {
+  margin: 0 8px;
+  height: 44px;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+
+/* ============================================
+   СПИННЕР ЗАГРУЗКИ
+   ============================================ */
+
+.tu-card .ant-spin-nested-loading {
+  min-height: 400px;
+}
+
+.tu-card .ant-spin-container {
+  min-height: 400px;
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ
+   ============================================ */
+
+/* Планшеты и небольшие экраны */
+@media (max-width: 768px) {
+  .tu-container {
+    padding: 20px 10px;
+  }
+
+  .tu-header {
+    margin-bottom: 20px;
+  }
+
+  .tu-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .mode-cards {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .mode-card {
+    padding: 24px 16px;
+  }
+
+  .mode-card h4 {
+    font-size: 1.1rem;
+  }
+
+  .manual-form-section {
+    padding: 20px 20px;
+  }
+
+  .confirmation-section {
+    padding: 16px;
+  }
+
+  .tu-card .ant-result {
+    padding: 20px 10px;
+  }
+
+  .tu-card .ant-result-title {
+    font-size: 1.2rem;
+  }
+
+  .tu-card .ant-result-extra button {
+    width: 100%;
+    margin: 8px 0;
+  }
+}
+
+/* Мобильные устройства */
+@media (max-width: 480px) {
+  .tu-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .tu-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .mode-card {
+    padding: 20px 12px;
+  }
+
+  .mode-card .anticon {
+    font-size: 48px;
+  }
+
+  .mode-card h4 {
+    font-size: 1rem;
+  }
+
+  .upload-section {
+    padding: 20px 10px;
+  }
+
+  .manual-form-section {
+    padding: 20px 15px;
+  }
+
+  .manual-form-section .ant-btn-primary {
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .confirmation-section .ant-btn-primary {
+    height: 48px;
+    font-size: 1rem;
+  }
+
+  .tu-card .ant-steps {
+    margin-bottom: 24px;
+  }
+
+  /* Steps в вертикальный режим на маленьких экранах */
+  .tu-card .ant-steps-item-title {
+    font-size: 0.9rem;
+  }
+
+  .tu-card .ant-steps-item-description {
+    display: none;
+  }
+}
+
+/* ============================================
+   ДОПОЛНИТЕЛЬНЫЕ УЛУЧШЕНИЯ UX
+   ============================================ */
+
+/* Анимация появления */
+.upload-section,
+.manual-form-section,
+.confirmation-section,
+.mode-selection {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hover эффект для кнопок "Назад" */
+.tu-header .ant-btn {
+  transition: all 0.3s ease;
+}
+
+.tu-header .ant-btn:hover {
+  transform: translateX(-4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Карточки с информацией в подтверждении */
+.confirmation-section .ant-card-head {
+  background-color: #fff7e6;
+  border-bottom: 2px solid #ffd591;
+}
+
+.confirmation-section .ant-card-head-title {
+  color: #fa8c16;
+  font-weight: 600;
+}
+
+/* Информационная карточка о формировании запросов */
+.confirmation-section .ant-card[style*="e6f7ff"] {
+  background-color: #fff7e6 !important;
+  border-color: #ffd591 !important;
+}

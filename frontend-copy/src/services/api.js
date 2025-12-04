@@ -77,17 +77,11 @@ export const kaitenApi = {
 };
 
 // ========================================
-// МОДУЛЬ: MID/MIF (ИСПРАВЛЕНО)
+// МОДУЛЬ: MID/MIF
 // ========================================
 export const midmifApi = {
-  // ИСПРАВЛЕНО: Используем специфический endpoint для предпросмотра MID/MIF
-  previewCoordinates: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/api/gp/midmif/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-  },
+  // ИСПОЛЬЗУЕТ: parsersApi.parseEgrn
+  previewCoordinates: (file) => parsersApi.parseEgrn(file),
   
   generateMidMif: async (file) => {
     const formData = new FormData();

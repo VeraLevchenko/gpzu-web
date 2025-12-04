@@ -1,20 +1,4 @@
 // frontend/src/components/GP/MidMifFlow.jsx
-/**
- * Компонент для подготовки MID/MIF файлов из выписки ЕГРН
- * 
- * ИСПРАВЛЕННАЯ ВЕРСИЯ - координаты X и Y поменяны местами
- * 
- * Функционал:
- * 1. Загрузка выписки ЕГРН (XML/ZIP)
- * 2. Предпросмотр координат в таблице (X и Y поменяны местами)
- * 3. Генерация и скачивание MID/MIF файлов
- * 
- * Исправления:
- * - X и Y координаты поменяны местами в отображении
- * - В таблице теперь: X (восток), Y (север)
- * - Данные обрабатываются с учетом смены координат
- */
-
 import React, { useState } from 'react';
 import { Steps, Upload, Button, Card, Table, message, Spin, Result } from 'antd';
 import { InboxOutlined, ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -27,8 +11,6 @@ const { Dragger } = Upload;
 
 const MidMifFlow = () => {
   const navigate = useNavigate();
-  
-  // ========== STATE ========== //
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -37,61 +19,22 @@ const MidMifFlow = () => {
 
   // ========== ШАГ 1: Загрузка и предпросмотр ========== //
   const handleFileUpload = async (file) => {
-    console.log('🟦 MidMif: Начало обработки файла', file.name);
     setLoading(true);
     setUploadedFile(file);
     
     try {
-      console.log('🟦 MidMif: Вызов midmifApi.previewCoordinates');
       const response = await midmifApi.previewCoordinates(file);
-      
-      console.log('🟦 MidMif: Получен ответ от API:', response);
-      console.log('🟦 MidMif: response.data:', response.data);
-      
-      // ИСПРАВЛЕНО: Правильная обработка ответа
       const data = response.data;
       
-      // Проверяем формат ответа
-      if (!data.success) {
-        throw new Error(data.detail || 'Ошибка обработки файла');
-      }
-      
-      // ИСПРАВЛЕНО: Меняем местами X и Y координаты для отображения
-      const swappedCoordinates = (data.coordinates || []).map(coord => ({
-        num: coord.num,
-        x: coord.y,  // X теперь = исходный Y (восток)
-        y: coord.x   // Y теперь = исходный X (север)
-      }));
-      
-      // Устанавливаем данные предпросмотра
-      setPreviewData({
-        cadnum: data.cadnum || '—',
-        total_points: data.total_points || 0,
-        coordinates: swappedCoordinates,
-        note: "Координаты в порядке X (восток), Y (север) — формат для MapInfo"
-      });
-      
-      console.log('🟦 MidMif: Установлены данные предпросмотра (X и Y поменяны местами):', {
-        cadnum: data.cadnum,
-        total_points: data.total_points,
-        coordinates_count: swappedCoordinates.length,
-        sample_coord: swappedCoordinates[0]
-      });
-      
+      setPreviewData(data);
       message.success('Координаты успешно извлечены');
       setCurrentStep(1);
       
     } catch (error) {
-      console.error('🟥 MidMif: Ошибка обработки файла:', error);
-      console.error('🟥 MidMif: error.response:', error.response);
-      
       message.error(
-        error.response?.data?.detail || 
-        error.message ||
-        'Ошибка обработки файла'
+        error.response?.data?.detail || 'Ошибка обработки файла'
       );
       setUploadedFile(null);
-      setPreviewData(null);
     } finally {
       setLoading(false);
     }
@@ -106,14 +49,10 @@ const MidMifFlow = () => {
       return;
     }
     
-    console.log('🟦 MidMif: Начало генерации MID/MIF');
     setLoading(true);
     
     try {
-      console.log('🟦 MidMif: Вызов midmifApi.generateMidMif');
       const response = await midmifApi.generateMidMif(uploadedFile);
-      
-      console.log('🟦 MidMif: Получен ответ генерации:', response);
       
       // Скачиваем файл
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -131,8 +70,6 @@ const MidMifFlow = () => {
         }
       }
       
-      console.log('🟦 MidMif: Скачивание файла:', filename);
-      
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
@@ -144,11 +81,8 @@ const MidMifFlow = () => {
       setCurrentStep(2);
       
     } catch (error) {
-      console.error('🟥 MidMif: Ошибка генерации файлов:', error);
       message.error(
-        error.response?.data?.detail || 
-        error.message ||
-        'Ошибка генерации файлов'
+        error.response?.data?.detail || 'Ошибка генерации файлов'
       );
     } finally {
       setLoading(false);
@@ -157,14 +91,13 @@ const MidMifFlow = () => {
 
   // ========== СБРОС ========== //
   const handleReset = () => {
-    console.log('🟦 MidMif: Сброс состояния');
     setCurrentStep(0);
     setUploadedFile(null);
     setPreviewData(null);
     setDownloadReady(false);
   };
 
-  // ========== КОЛОНКИ ТАБЛИЦЫ КООРДИНАТ (ИСПРАВЛЕНО: X и Y поменяны местами) ========== //
+  // ========== КОЛОНКИ ТАБЛИЦЫ КООРДИНАТ ========== //
   const columns = [
     {
       title: '№',
@@ -174,27 +107,23 @@ const MidMifFlow = () => {
       align: 'center',
     },
     {
-      title: 'X (восток)',  // ИСПРАВЛЕНО: X теперь восток
-      dataIndex: 'x',
-      key: 'x',
-      width: 200,
-      align: 'right',
-    },
-    {
-      title: 'Y (север)',   // ИСПРАВЛЕНО: Y теперь север
+      title: 'Y (восток)',
       dataIndex: 'y',
       key: 'y',
       width: 200,
       align: 'right',
     },
+    {
+      title: 'X (север)',
+      dataIndex: 'x',
+      key: 'x',
+      width: 200,
+      align: 'right',
+    },
   ];
-
-  // Отладочное логирование
-  console.log('🟦 MidMif: Рендер компонента, currentStep:', currentStep, 'previewData:', !!previewData);
 
   return (
     <div className="midmif-container">
-      {/* ========== ЗАГОЛОВОК ========== */}
       <div className="midmif-header">
         <Button 
           icon={<ArrowLeftOutlined />} 
@@ -206,16 +135,13 @@ const MidMifFlow = () => {
         <h1>Подготовка MID/MIF</h1>
       </div>
 
-      {/* ========== ОСНОВНАЯ КАРТОЧКА ========== */}
       <Card className="midmif-card">
-        {/* Steps индикатор */}
         <Steps current={currentStep} style={{ marginBottom: 32 }}>
           <Step title="Загрузка ЕГРН" />
           <Step title="Предпросмотр" />
           <Step title="Готово" />
         </Steps>
 
-        {/* Спиннер загрузки */}
         <Spin spinning={loading} size="large" tip="Обработка...">
           
           {/* ========== ШАГ 0: ЗАГРУЗКА ФАЙЛА ========== */}
@@ -252,12 +178,10 @@ const MidMifFlow = () => {
                   </div>
                 }
               >
-                {/* ИСПРАВЛЕНО: Обновленное примечание о координатах */}
                 <div style={{ marginBottom: 16, color: '#8c8c8c' }}>
                   ⚠️ {previewData.note}
                 </div>
                 
-                {/* Таблица координат с поменянными X и Y */}
                 <Table
                   columns={columns}
                   dataSource={previewData.coordinates.map((coord, idx) => ({
@@ -270,7 +194,6 @@ const MidMifFlow = () => {
                   bordered
                 />
                 
-                {/* Общее количество точек */}
                 <div style={{ 
                   marginTop: 16, 
                   textAlign: 'center',
@@ -281,7 +204,6 @@ const MidMifFlow = () => {
                 </div>
               </Card>
 
-              {/* Кнопка генерации */}
               <Button
                 type="primary"
                 onClick={handleGenerate}
@@ -306,9 +228,6 @@ const MidMifFlow = () => {
                   </p>
                   <p style={{ color: '#8c8c8c', marginTop: 12 }}>
                     Кадастровый номер: <strong>{previewData?.cadnum}</strong>
-                  </p>
-                  <p style={{ color: '#8c8c8c', fontSize: '0.9rem', marginTop: 8 }}>
-                    Координаты преобразованы в формат MapInfo (X = восток, Y = север)
                   </p>
                 </div>
               }

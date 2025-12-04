@@ -1,0 +1,10 @@
+.kaiten-container { min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 40px 20px; }
+.kaiten-header { display: flex; align-items: center; gap: 20px; max-width: 1000px; margin: 0 auto 32px; }
+.kaiten-header h1 { font-size: 2rem; font-weight: 700; color: #262626; margin: 0; }
+.kaiten-card { max-width: 1000px; margin: 0 auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.upload-section { padding: 40px 20px; }
+.confirmation-section { padding: 20px; }
+.ant-upload-drag { border: 2px dashed #1890ff !important; border-radius: 12px; background: #f0f5ff !important; transition: all 0.3s ease; }
+.ant-upload-drag:hover { border-color: #40a9ff !important; background: #e6f7ff !important; }
+.ant-upload-text { font-size: 1.1rem; color: #262626; font-weight: 500; }
+.ant-upload-hint { color: #8c8c8c; }

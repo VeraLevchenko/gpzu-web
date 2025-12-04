@@ -1,0 +1,13 @@
+.home-container { min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 40px 20px; }
+.home-header { display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto 20px; flex-wrap: wrap; gap: 20px; }
+.home-header h1 { font-size: 2rem; font-weight: 700; color: #1890ff; margin: 0; }
+.logout-btn { padding: 10px 24px; font-size: 1rem; border: none; border-radius: 8px; background: #ff4d4f; color: white; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.3s ease; }
+.logout-btn:hover { background: #ff7875; transform: translateY(-2px); }
+.module-card { border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: all 0.3s ease; border: none; }
+.module-card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
+.card-cover { height: 280px; display: flex; align-items: center; justify-content: center; }
+.gradplan-cover { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.card-icon { font-size: 120px; color: white; opacity: 0.9; }
+.card-content { padding: 24px; text-align: center; }
+.card-content h2 { font-size: 1.8rem; margin: 0 0 16px 0; color: #262626; }
+.card-content p { font-size: 1rem; color: #595959; line-height: 1.6; margin: 0; }

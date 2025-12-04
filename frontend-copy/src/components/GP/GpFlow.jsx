@@ -12,15 +12,12 @@ import {
   Radio,
   Table,
   Descriptions,
-  Divider,
-  Tag
+  Divider
 } from 'antd';
 import { 
   ArrowLeftOutlined, 
   FileTextOutlined,
-  InboxOutlined,
-  EnvironmentOutlined,
-  BuildOutlined
+  InboxOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { parsersApi, gradplanApi } from '../../services/api';
@@ -124,7 +121,6 @@ const GpFlow = () => {
       
       setSpatialData({
         zone: data.zone || { code: '', name: '' },
-        district: data.district || { code: '', name: '' },  // НОВОЕ: информация о районе
         capital_objects: data.capital_objects || [],
         zouit: data.zouit || [],
         planning_project: data.planning_project || {
@@ -142,7 +138,6 @@ const GpFlow = () => {
       // Устанавливаем пустые данные
       setSpatialData({
         zone: { code: '', name: '' },
-        district: { code: '', name: '' },  // НОВОЕ: пустой район
         capital_objects: [],
         zouit: [],
         planning_project: {
@@ -166,7 +161,6 @@ const GpFlow = () => {
         application: applicationData,
         parcel: egrnData,
         zone: spatialData.zone,
-        district: spatialData.district,  // НОВОЕ: передаём информацию о районе
         capital_objects: spatialData.capital_objects,
         planning_project: spatialData.planning_project,
         zouit: spatialData.zouit
@@ -231,20 +225,6 @@ const GpFlow = () => {
     { title: 'Наименование', dataIndex: 'name', key: 'name' },
     { title: 'Реестровый номер', dataIndex: 'registry_number', key: 'registry_number' }
   ];
-
-  // ============================================
-  // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ РАЙОНА
-  // ============================================
-  const getDistrictDisplay = (district) => {
-    if (!district) return '—';
-    if (district.name) {
-      return district.code ? `${district.name} (${district.code})` : district.name;
-    }
-    if (district.code) {
-      return `Район ${district.code}`;
-    }
-    return 'Район не определён';
-  };
 
   // ============================================
   // РЕНДЕР
@@ -376,12 +356,6 @@ const GpFlow = () => {
                   <Descriptions.Item label="Кадастровый номер">{egrnData.cadnum}</Descriptions.Item>
                   <Descriptions.Item label="Площадь">{egrnData.area} кв.м</Descriptions.Item>
                   <Descriptions.Item label="Адрес" span={2}>{egrnData.address}</Descriptions.Item>
-                  {/* НОВОЕ: Показываем район */}
-                  <Descriptions.Item label="Район" span={2}>
-                    <Tag icon={<EnvironmentOutlined />} color="blue">
-                      {getDistrictDisplay(spatialData.district)}
-                    </Tag>
-                  </Descriptions.Item>
                 </Descriptions>
               </Card>
 
