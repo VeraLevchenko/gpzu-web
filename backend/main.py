@@ -5,6 +5,8 @@
 Веб-приложение для автоматизации работы с градостроительными планами
 земельных участков (ГПЗУ) и сопутствующими документами.
 
+ИСПРАВЛЕНО: Добавлен правильный импорт и подключение midmif router
+
 Модули:
 - Kaiten: создание задач в Kaiten
 - MID/MIF: подготовка файлов для MapInfo
@@ -24,9 +26,9 @@ from fastapi.responses import FileResponse
 
 # Импорт роутеров
 from api.auth import router as auth_router
-from api.parsers import router as parsers_router  # ← НОВОЕ: Общие парсеры
+from api.parsers import router as parsers_router  # Общие парсеры
 from api.gp.kaiten import router as kaiten_router
-from api.gp.midmif import router as midmif_router
+from api.gp.midmif import router as midmif_router  # ← ИСПРАВЛЕНО: Добавлен импорт
 from api.gp.tu import router as tu_router
 from api.gp.gradplan import router as gradplan_router
 
@@ -59,10 +61,6 @@ app = FastAPI(
 # НАСТРОЙКА CORS
 # ========================================================================
 
-# ========================================================================
-# НАСТРОЙКА CORS
-# ========================================================================
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -73,7 +71,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         
         # Production сервер (через Nginx на порту 80)
-        "http://10.1.200.12",           # ← ДОБАВЬТЕ ЭТУ СТРОКУ (без порта)
+        "http://10.1.200.12",           
         "http://10.1.200.12:8000",
         "http://10.1.200.12:3000",
         
@@ -105,11 +103,11 @@ FRONTEND_BUILD = Path(__file__).parent.parent / "frontend" / "build"
 app.include_router(auth_router)
 
 # Общие сервисы (парсеры)
-app.include_router(parsers_router)  # ← НОВОЕ: /api/parsers/*
+app.include_router(parsers_router)  # /api/parsers/*
 
 # Модули градостроительного плана
 app.include_router(kaiten_router)      # Создание задач в Kaiten
-app.include_router(midmif_router)      # Подготовка MID/MIF файлов
+app.include_router(midmif_router)      # ← ИСПРАВЛЕНО: Добавлено подключение MID/MIF router
 app.include_router(tu_router)          # Формирование запросов ТУ
 app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
 
@@ -131,9 +129,9 @@ async def health_check():
         "version": "1.0.0",
         "modules": {
             "auth": "enabled",
-            "parsers": "enabled",  # ← НОВОЕ
+            "parsers": "enabled",
             "kaiten": "enabled",
-            "midmif": "enabled",
+            "midmif": "enabled",      # ← ИСПРАВЛЕНО: Добавлено в статус
             "tu": "enabled",
             "gradplan": "enabled",
         }

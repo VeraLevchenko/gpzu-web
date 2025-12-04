@@ -1,6 +1,7 @@
 # backend/api/gp/midmif.py
 """
 API endpoints для генерации MID/MIF файлов из выписки ЕГРН.
+ИСПРАВЛЕННАЯ ВЕРСИЯ - координаты X и Y поменяны местами
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -23,14 +24,15 @@ async def preview_coordinates(file: UploadFile = File(...)):
     """
     Предпросмотр координат из выписки ЕГРН.
     
-    Возвращает список координат для отображения пользователю
-    перед генерацией MID/MIF.
+    ИСПРАВЛЕНО: Координаты X и Y поменяны местами
+    - X теперь = восток (исходный Y из ЕГРН)
+    - Y теперь = север (исходный X из ЕГРН)
     
     Args:
         file: XML или ZIP файл выписки ЕГРН
     
     Returns:
-        JSON с координатами и метаинформацией
+        JSON с координатами в формате X=восток, Y=север
     """
     
     # Проверка формата файла
@@ -74,21 +76,25 @@ async def preview_coordinates(file: UploadFile = File(...)):
             pt for cnt in numbered_contours for pt in cnt
         ]
         
-        # Формируем ответ с координатами в порядке Y (восток), X (север)
+        # ИСПРАВЛЕНО: Формируем ответ с поменянными местами координатами
+        # В парсере ЕГРН: x = север (из <y> XML), y = восток (из <x> XML)
+        # Теперь возвращаем: x = восток, y = север
         coordinates = []
         for pt in all_points:
             coordinates.append({
                 "num": pt.num,
-                "y": pt.y,  # Y (восток)
-                "x": pt.x   # X (север)
+                "x": pt.y,  # X = восток (исходный Y из парсера)
+                "y": pt.x   # Y = север (исходный X из парсера)
             })
+        
+        logger.info(f"Координаты подготовлены (X=восток, Y=север): {len(coordinates)} точек")
         
         return {
             "success": True,
             "cadnum": egrn.cadnum or "—",
             "total_points": len(all_points),
             "coordinates": coordinates,
-            "note": "Координаты в порядке Y (восток), X (север) — как в пространственных слоях"
+            "note": "Координаты в порядке X (восток), Y (север) — формат для MapInfo"
         }
         
     except HTTPException:
@@ -106,11 +112,7 @@ async def generate_midmif(file: UploadFile = File(...)):
     """
     Генерация MID/MIF файлов из выписки ЕГРН.
     
-    Принимает:
-    - XML или ZIP файл выписки ЕГРН
-    
-    Возвращает:
-    - ZIP архив с файлами .mif и .mid
+    ИСПРАВЛЕНО: Координаты в файлах MID/MIF будут в формате X=восток, Y=север
     
     Args:
         file: XML или ZIP файл выписки ЕГРН
@@ -155,13 +157,16 @@ async def generate_midmif(file: UploadFile = File(...)):
         # Пересчитываем нумерацию точек
         numbered_contours = _renumber_contours(egrn.contours)
         
-        # Формируем структуру для генератора
-        # ВАЖНО: Для MID/MIF генератора передаём в исходном порядке X, Y
+        # ИСПРАВЛЕНО: Формируем структуру для генератора с поменянными координатами
+        # В парсере ЕГРН: pt.x = север, pt.y = восток
+        # Для MID/MIF нужно: X = восток, Y = север
         contours_for_builder: List[List[Tuple[str, str, str]]] = []
         for cnt in numbered_contours:
             contours_for_builder.append([
-                (c.num, c.x, c.y) for c in cnt
+                (c.num, c.y, c.x) for c in cnt  # ИСПРАВЛЕНО: поменяли местами c.x и c.y
             ])
+        
+        logger.info("Координаты для MID/MIF подготовлены (X=восток, Y=север)")
         
         # Генерируем MID/MIF
         base_name, mif_bytes, mid_bytes = build_mid_mif_from_contours(
@@ -204,7 +209,7 @@ def _renumber_contours(contours: List[List[ECoord]]) -> List[List[ECoord]]:
     """
     Пересчитывает нумерацию точек в контурах.
     
-    Логика (скопирована из flows/midmif_flow.py бота):
+    Логика:
     - Внутри контура точки с одинаковыми координатами получают один номер
     - Между контурами номера идут сквозняком (следующий контур начинается с max+1)
     
