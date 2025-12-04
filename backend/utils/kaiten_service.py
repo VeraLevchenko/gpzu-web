@@ -1,7 +1,7 @@
 import aiohttp
 import logging
 from typing import Optional, Dict, Any
-from core.config import KAITEN_API_TOKEN, KAITEN_DOMAIN, KAITEN_BOARD_ID, KAITEN_COLUMN_ID
+from core.config import KAITEN_API_TOKEN, KAITEN_DOMAIN, KAITEN_BOARD_ID, KAITEN_COLUMN_ID, KAITEN_LANE_ID
 
 logger = logging.getLogger(__name__)
 BASE_URL = f"https://{KAITEN_DOMAIN}/api/latest"
@@ -18,6 +18,7 @@ async def create_card(
     due_date: Optional[str] = None,
     board_id: int = KAITEN_BOARD_ID,
     column_id: int = KAITEN_COLUMN_ID,
+    lane_id: int = KAITEN_LANE_ID,
     properties: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     if not board_id:
@@ -28,6 +29,7 @@ async def create_card(
     payload = {
         "board_id": board_id,
         "column_id": column_id,
+        "lane_id": lane_id,
         "title": title,
         "description": description,
     }

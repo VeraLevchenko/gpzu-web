@@ -161,8 +161,6 @@ async def spatial_analysis(request: Request):
                 {
                     "name": z.name,
                     "registry_number": z.registry_number,
-                    "area": z.area,
-                    "document": z.document,
                     "restrictions": z.restrictions
                 }
                 for z in gp_data.zouit

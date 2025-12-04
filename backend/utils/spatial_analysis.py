@@ -64,16 +64,15 @@ def perform_spatial_analysis(gp_data: GPData) -> GPData:
 
 def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
     """
-    Извлечь координаты участка.
+    Извлечь координаты участка для пространственного анализа.
     
-    ВАЖНО: Координаты в gp_data.parcel.coordinates УЖЕ в порядке (Y, X),
-    т.к. они были преобразованы при создании GPData в create_gp_data_from_parsed().
-    
-    ЕГРН изначально: X (север), Y (восток)
-    В JSON/GPData: x=Y (восток), y=X (север) - УЖЕ ПОМЕНЯНЫ!
+    Парсер ЕГРН уже меняет координаты местами:
+    - В XML ЕГРН: <x> = восток, <y> = север
+    - Парсер сохраняет: x = север (из <y>), y = восток (из <x>)
+    - Для Shapely нужен порядок: (север, восток) = (x, y)
     
     Returns:
-        List[(y, x)] - координаты в формате для Shapely (восток, север)
+        List[(север, восток)] - координаты для Shapely
     """
     coords_list = gp_data.parcel.coordinates
     if not coords_list:
@@ -82,26 +81,27 @@ def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
     result = []
     for coord in coords_list:
         try:
-            # В JSON координаты УЖЕ поменяны местами:
-            # coord['x'] = это Y из ЕГРН (восток)
-            # coord['y'] = это X из ЕГРН (север)
-            x_str = coord.get('x', '')  # Это Y (восток)
-            y_str = coord.get('y', '')  # Это X (север)
-            x = float(x_str.replace(',', '.').replace(' ', ''))
-            y = float(y_str.replace(',', '.').replace(' ', ''))
+            x_str = coord.get('x', '')  # север (из <y> XML)
+            y_str = coord.get('y', '')  # восток (из <x> XML)
             
-            # Для Shapely нужен порядок (восток, север), т.е. (x, y)
-            # Координаты уже в правильном порядке!
-            result.append((x, y))
+            x_val = float(x_str.replace(',', '.').replace(' ', ''))
+            y_val = float(y_str.replace(',', '.').replace(' ', ''))
             
-            logger.debug(f"Координата из JSON: x(восток)={x}, y(север)={y} → ({x}, {y}) для Shapely")
+            # Координаты уже в правильном порядке из парсера (север, восток)
+            result.append((x_val, y_val))
             
         except (ValueError, AttributeError, KeyError) as ex:
             logger.warning(f"Ошибка парсинга координаты: {ex}")
             continue
     
     if result:
-        logger.info(f"Извлечено {len(result)} координат (уже в формате Y,X для анализа)")
+        logger.info(f"Извлечено {len(result)} координат для анализа")
+        if len(result) > 0:
+            min_x = min(c[0] for c in result)
+            max_x = max(c[0] for c in result)
+            min_y = min(c[1] for c in result)
+            max_y = max(c[1] for c in result)
+            logger.info(f"Границы участка: X({min_x:.2f}..{max_x:.2f}), Y({min_y:.2f}..{max_y:.2f})")
     
     return result
 
@@ -204,7 +204,6 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
         msg = f"Слой ППТ не найден: {LayerPaths.PLANNING_PROJECTS}"
         logger.warning(msg)
         gp_data.add_warning(msg)
-        # ВАЖНО: Устанавливаем объект с exists=False и заполненным decision_full
         gp_data.planning_project = PlanningProject(exists=False)
         gp_data.planning_project.decision_full = gp_data.planning_project.get_formatted_description()
         return
@@ -213,14 +212,12 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
         projects = parse_planning_projects_layer(LayerPaths.PLANNING_PROJECTS)
         if not projects:
             logger.info("Слой проектов планировки пуст")
-            # ВАЖНО: Устанавливаем объект с exists=False и заполненным decision_full
             gp_data.planning_project = PlanningProject(exists=False)
             gp_data.planning_project.decision_full = gp_data.planning_project.get_formatted_description()
             return
         
         project_info = check_planning_project_intersection(coords, projects)
         if project_info:
-            # Создаём объект с новыми полями
             planning_project = PlanningProject(
                 exists=True,
                 project_type=project_info.get('project_type'),
@@ -229,10 +226,7 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
                 decision_date=project_info.get('decision_date'),
                 decision_authority=project_info.get('decision_authority'),
             )
-            
-            # ВАЖНО: Формируем полное описание
             planning_project.decision_full = planning_project.get_formatted_description()
-            
             gp_data.planning_project = planning_project
             
             logger.info(
@@ -240,7 +234,6 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
                 f'"{project_info.get("project_name")}"'
             )
         else:
-            # ВАЖНО: Устанавливаем объект с exists=False и заполненным decision_full
             gp_data.planning_project = PlanningProject(exists=False)
             gp_data.planning_project.decision_full = gp_data.planning_project.get_formatted_description()
             logger.info("Участок не входит в границы ППТ")
@@ -249,7 +242,6 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
         msg = f"Ошибка при проверке ППТ: {ex}"
         logger.exception(msg)
         gp_data.add_error(msg)
-        # ВАЖНО: Устанавливаем объект с exists=False и заполненным decision_full в случае ошибки
         gp_data.planning_project = PlanningProject(exists=False)
         gp_data.planning_project.decision_full = gp_data.planning_project.get_formatted_description()
 
@@ -261,7 +253,6 @@ def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
         return
     
     try:
-        # Используем расширенную функцию с реестровым номером
         restrictions = parse_zouit_layer_extended(LayerPaths.ZOUIT, "ЗОУИТ")
         
         if not restrictions:
@@ -291,24 +282,7 @@ def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
 
 def _analyze_other_restrictions(gp_data: GPData, coords: List[Tuple[float, float]]):
     """Проверить АГО, КРТ, ОКН"""
-    # Пока заглушка, можно расширить позже
     pass
-
-
-def _format_decision(
-    number: Optional[str],
-    date: Optional[str],
-    authority: Optional[str]
-) -> str:
-    """Форматировать реквизиты решения"""
-    parts = []
-    if authority:
-        parts.append(authority)
-    if number:
-        parts.append(f"№ {number}")
-    if date:
-        parts.append(f"от {date}")
-    return " ".join(parts) if parts else "Реквизиты не определены"
 
 
 def test_layers_availability() -> Dict[str, bool]:

@@ -17,7 +17,15 @@ class Coord:
     """
     Одна точка контура ЗУ из ЕГРН.
     num – номер точки (ord_nmb / индекс),
-    x, y – координаты, как есть из XML (строки).
+    x, y – координаты.
+    
+    ВАЖНО: В ЕГРН XML:
+    - <x> = ВОСТОК (малое значение ~447000)
+    - <y> = СЕВЕР (большое значение ~2209000)
+    
+    Для совместимости с ГИС слоями (формат: СЕВЕР, ВОСТОК) меняем местами:
+    - x = СЕВЕР (из <y> в XML)
+    - y = ВОСТОК (из <x> в XML)
     """
     num: str
     x: str
@@ -219,6 +227,12 @@ def _extract_contours_from_contours_location(root: etree._Element) -> List[List[
     """
     Извлекает координаты ТОЛЬКО из <contours_location>, с сохранением структуры
     контуров и порядка точек.
+    
+    ВАЖНО: В ЕГРН XML координаты идут как:
+    - <x> = ВОСТОК (малое значение ~447000)
+    - <y> = СЕВЕР (большое значение ~2209000)
+    
+    Для совместимости с ГИС слоями (формат: СЕВЕР, ВОСТОК) меняем их местами при сохранении.
 
     Ожидаем структуру:
 
@@ -258,17 +272,22 @@ def _extract_contours_from_contours_location(root: etree._Element) -> List[List[
                 y_nodes = ord_el.xpath("*[local-name()='y']")
                 num_nodes = ord_el.xpath("*[local-name()='ord_nmb']")
 
-                x = _text_or_none(x_nodes[0]) if x_nodes else None
-                y = _text_or_none(y_nodes[0]) if y_nodes else None
+                # В XML ЕГРН:
+                # <x> = ВОСТОК (малое значение ~447000)
+                # <y> = СЕВЕР (большое значение ~2209000)
+                x_xml = _text_or_none(x_nodes[0]) if x_nodes else None  # восток
+                y_xml = _text_or_none(y_nodes[0]) if y_nodes else None  # север
                 num = _text_or_none(num_nodes[0]) if num_nodes else None
 
-                if not x or not y:
+                if not x_xml or not y_xml:
                     continue
 
                 if not num:
                     num = str(idx)
 
-                contour_coords.append(Coord(num=num, x=x, y=y))
+                # МЕНЯЕМ МЕСТАМИ: сохраняем как x=север, y=восток
+                # Для совместимости с ГИС слоями (формат: север, восток)
+                contour_coords.append(Coord(num=num, x=y_xml, y=x_xml))
 
             if contour_coords:
                 contours_result.append(contour_coords)
@@ -303,6 +322,8 @@ def parse_egrn_xml(raw: bytes) -> EGRNData:
       - берём только из <contours_location>,
       - contours: список контуров,
       - coordinates: плоский список всех точек во всех контурах.
+      - координаты преобразуются из формата ЕГРН XML (x=восток, y=север)
+        в формат ГИС (x=север, y=восток)
     """
     xml_bytes = _extract_xml_bytes(raw)
     root = _parse_root(xml_bytes)
