@@ -3,6 +3,8 @@
 
 Все модули (Kaiten, MidMif, TU, ГПЗУ) используют эти endpoints
 вместо дублирования кода парсинга.
+
+ОБНОВЛЕНО: добавлена передача площадей ЗОУИТ в API ответе
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
@@ -113,6 +115,7 @@ async def spatial_analysis(request: Request):
     Пространственный анализ участка.
     
     Используется модулями: ГПЗУ (автоматически), остальные по запросу
+    ОБНОВЛЕНО: возвращает площади ЗОУИТ
     """
     try:
         data = await request.json()
@@ -146,7 +149,6 @@ async def spatial_analysis(request: Request):
                 "name": gp_data.zone.name if gp_data.zone else ""
             } if gp_data.zone else None,
             
-            # НОВОЕ: Добавляем информацию о районе
             "district": {
                 "code": gp_data.district.code if gp_data.district else "",
                 "name": gp_data.district.name if gp_data.district else ""
@@ -163,11 +165,13 @@ async def spatial_analysis(request: Request):
                 for obj in gp_data.capital_objects
             ],
             
+            # 🔥 ОБНОВЛЕНО: Добавлено поле "area" для каждой ЗОУИТ
             "zouit": [
                 {
                     "name": z.name,
                     "registry_number": z.registry_number,
-                    "restrictions": z.restrictions
+                    "restrictions": z.restrictions,
+                    "area": z.area_sqm  # 🔥 НОВОЕ: площадь пересечения в кв.м
                 }
                 for z in gp_data.zouit
             ],
@@ -186,7 +190,10 @@ async def spatial_analysis(request: Request):
             "errors": gp_data.errors
         }
         
-        logger.info(f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, ОКС={len(result['capital_objects'])}")
+        # Подсчёт ЗОУИТ с площадями для логирования
+        zouit_with_areas = sum(1 for z in gp_data.zouit if z.area_sqm is not None and z.area_sqm > 0)
+        
+        logger.info(f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])} (с площадями: {zouit_with_areas})")
         
         return JSONResponse(content={
             "success": True,

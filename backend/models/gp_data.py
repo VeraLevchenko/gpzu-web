@@ -193,6 +193,9 @@ class RestrictionZone:
     decision_authority: Optional[str] = None
     restrictions: List[str] = field(default_factory=list)
     additional_info: Optional[str] = None
+    # 🔥 новые поля
+    area_sqm: Optional[float] = None   # площадь пересечения, кв.м
+    area: Optional[float] = None       # запасной вариант (для совместимости)
     
     def get_full_name(self) -> str:
         """Получить полное название с реестровым номером"""
