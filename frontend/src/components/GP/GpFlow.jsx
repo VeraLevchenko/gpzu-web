@@ -19,8 +19,7 @@ import {
   ArrowLeftOutlined, 
   FileTextOutlined,
   InboxOutlined,
-  EnvironmentOutlined,
-  BuildOutlined
+  EnvironmentOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { parsersApi, gradplanApi } from '../../services/api';
@@ -126,7 +125,7 @@ const GpFlow = () => {
         zone: data.zone || { code: '', name: '' },
         district: data.district || { code: '', name: '' },  // НОВОЕ: информация о районе
         capital_objects: data.capital_objects || [],
-        zouit: data.zouit || [],
+        zouit: data.zouit || [], // ВАЖНО: теперь содержит поле area для каждой ЗОУИТ
         planning_project: data.planning_project || {
           exists: false,
           decision_full: 'Документация по планировке территории не утверждена'
@@ -227,9 +226,46 @@ const GpFlow = () => {
     { title: 'Кадастровый номер', dataIndex: 'cadnum', key: 'cadnum' }
   ];
 
+  // ============================================
+  // НОВОЕ: ФУНКЦИЯ ФОРМАТИРОВАНИЯ ПЛОЩАДЕЙ
+  // ============================================
+  const formatArea = (area) => {
+    if (!area || area <= 0) return '—';
+    
+    const numArea = parseFloat(area);
+    if (isNaN(numArea)) return '—';
+    
+    // Форматирование в русском стиле: 1024.46 → "1 024,46 кв.м"
+    return numArea.toLocaleString('ru-RU', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }) + ' кв.м';
+  };
+
+  // ============================================
+  // ОБНОВЛЁННЫЕ КОЛОНКИ ТАБЛИЦЫ ЗОУИТ (с площадями)
+  // ============================================
   const zouitColumns = [
-    { title: 'Наименование', dataIndex: 'name', key: 'name' },
-    { title: 'Реестровый номер', dataIndex: 'registry_number', key: 'registry_number' }
+    { 
+      title: 'Наименование', 
+      dataIndex: 'name', 
+      key: 'name',
+      width: '45%'
+    },
+    { 
+      title: 'Реестровый номер', 
+      dataIndex: 'registry_number', 
+      key: 'registry_number',
+      width: '30%'
+    },
+    { 
+      title: 'Площадь пересечения', 
+      dataIndex: 'area', 
+      key: 'area',
+      width: '25%',
+      render: (area) => formatArea(area),
+      align: 'right'
+    }
   ];
 
   // ============================================
@@ -421,15 +457,26 @@ const GpFlow = () => {
                 )}
               </Card>
 
+              {/* ОБНОВЛЁННАЯ ТАБЛИЦА ЗОУИТ (с площадями) */}
               <Card title="⚠️ ЗОУИТ" size="small" style={{ marginBottom: 16 }}>
                 {spatialData.zouit?.length > 0 ? (
-                  <Table 
-                    dataSource={spatialData.zouit}
-                    columns={zouitColumns}
-                    pagination={false}
-                    size="small"
-                    rowKey={(record) => record.registry_number || record.name}
-                  />
+                  <>
+                    <Table 
+                      dataSource={spatialData.zouit}
+                      columns={zouitColumns}
+                      pagination={false}
+                      size="small"
+                      rowKey={(record) => record.registry_number || record.name}
+                    />
+                    <p style={{ 
+                      marginTop: 12, 
+                      fontSize: '0.85rem', 
+                      color: '#8c8c8c',
+                      fontStyle: 'italic' 
+                    }}>
+                      * Площадь пересечения — часть земельного участка, попадающая в границы ЗОУИТ
+                    </p>
+                  </>
                 ) : (
                   <p>ЗОУИТ не обнаружены</p>
                 )}

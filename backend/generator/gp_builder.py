@@ -803,8 +803,10 @@ class GPBuilder:
             if area and area > 0:
                 # только целая часть
                 try:
-                    int_area = int(float(area))
-                except:
+                    # математическое округление до целого
+                    value = float(area)
+                    int_area = int(round(value))
+                except Exception:
                     int_area = None
 
                 if int_area is not None:
@@ -891,6 +893,8 @@ class GPBuilder:
         if not coords:
             logger.info("Координаты отсутствуют, таблица координат не формируется")
             return
+
+        # ВАЖНО: coords уже приходят с правильной нумерацией (как в MID/MIF и интерфейсе)
 
         # Ищем параграф с маркером [[COORDS_TABLE]]
         p_coords = _find_paragraph_with_text(doc, MARKER_COORDS)
