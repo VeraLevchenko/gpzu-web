@@ -1,6 +1,7 @@
 # utils/spatial_analysis.py
 """
 Модуль пространственного анализа земельного участка.
+ПОЛНАЯ ВЕРСИЯ С РАСЧЁТОМ ПЛОЩАДЕЙ ЗОУИТ
 """
 
 from __future__ import annotations
@@ -9,10 +10,17 @@ import logging
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Any
 
+# Импорт Shapely для расчёта площадей
+try:
+    from shapely.geometry import Polygon
+    SHAPELY_AVAILABLE = True
+except ImportError:
+    SHAPELY_AVAILABLE = False
+
 from models.gp_data import (
     GPData,
     TerritorialZoneInfo,
-    DistrictInfo,  # НОВОЕ: импорт информации о районе
+    DistrictInfo,
     CapitalObject,
     PlanningProject,
     RestrictionZone,
@@ -20,9 +28,9 @@ from models.gp_data import (
 from core.layers_config import LayerPaths
 from parsers.tab_parser import (
     parse_zones_layer,
-    parse_districts_layer,  # НОВОЕ: импорт парсера районов
+    parse_districts_layer,
     find_zone_for_parcel,
-    find_district_for_parcel,  # НОВОЕ: импорт функции поиска района
+    find_district_for_parcel,
     parse_capital_objects_layer,
     find_objects_on_parcel,
     parse_planning_projects_layer,
@@ -44,7 +52,7 @@ def perform_spatial_analysis(gp_data: GPData) -> GPData:
         logger.error("Нет координат участка для анализа")
         return gp_data
     
-    logger.info("Этап 1/6: Определение района города")  # НОВОЕ: добавился этап
+    logger.info("Этап 1/6: Определение района города")
     _analyze_district(gp_data, coords)
     
     logger.info("Этап 2/6: Определение территориальной зоны")
@@ -56,7 +64,7 @@ def perform_spatial_analysis(gp_data: GPData) -> GPData:
     logger.info("Этап 4/6: Проверка проектов планировки")
     _analyze_planning_projects(gp_data, coords)
     
-    logger.info("Этап 5/6: Проверка ЗОУИТ")
+    logger.info("Этап 5/6: Проверка ЗОУИТ с расчётом площадей")
     _analyze_zouit(gp_data, coords)
     
     logger.info("Этап 6/6: Проверка прочих ограничений")
@@ -72,11 +80,6 @@ def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
     """
     Извлечь координаты участка для пространственного анализа.
     
-    Парсер ЕГРН уже меняет координаты местами:
-    - В XML ЕГРН: <x> = восток, <y> = север
-    - Парсер сохраняет: x = север (из <y>), y = восток (из <x>)
-    - Для Shapely нужен порядок: (север, восток) = (x, y)
-    
     Returns:
         List[(север, восток)] - координаты для Shapely
     """
@@ -87,13 +90,12 @@ def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
     result = []
     for coord in coords_list:
         try:
-            x_str = coord.get('x', '')  # север (из <y> XML)
-            y_str = coord.get('y', '')  # восток (из <x> XML)
+            x_str = coord.get('x', '')
+            y_str = coord.get('y', '')
             
             x_val = float(x_str.replace(',', '.').replace(' ', ''))
             y_val = float(y_str.replace(',', '.').replace(' ', ''))
             
-            # Координаты уже в правильном порядке из парсера (север, восток)
             result.append((x_val, y_val))
             
         except (ValueError, AttributeError, KeyError) as ex:
@@ -113,14 +115,11 @@ def _get_parcel_coords(gp_data: GPData) -> List[Tuple[float, float]]:
 
 
 def _analyze_district(gp_data: GPData, coords: List[Tuple[float, float]]):
-    """
-    НОВАЯ ФУНКЦИЯ: Определить район города для участка.
-    """
+    """Определить район города для участка."""
     if not LayerPaths.DISTRICTS.exists():
         msg = f"Слой районов не найден: {LayerPaths.DISTRICTS}"
         logger.warning(msg)
         gp_data.add_warning(msg)
-        # Устанавливаем пустой район
         gp_data.district = DistrictInfo()
         return
     
@@ -140,7 +139,6 @@ def _analyze_district(gp_data: GPData, coords: List[Tuple[float, float]]):
             )
             logger.info(f"Район определён: {district_info.get('code')} {district_info.get('name')}")
             
-            # Также можем сохранить район в parcel для совместимости
             gp_data.parcel.district = gp_data.district.name
         else:
             logger.warning("Не удалось определить район участка")
@@ -171,20 +169,17 @@ def _analyze_zone(gp_data: GPData, coords: List[Tuple[float, float]]):
         
         zone_info = find_zone_for_parcel(coords, zones)
         if zone_info:
-            # Создаём объект зоны
             zone = TerritorialZoneInfo(
                 name=zone_info.get('name'),
                 code=zone_info.get('code'),
             )
             
-            # Устанавливаем дополнительную информацию через свойства
             zone.multiple_zones = zone_info.get('multiple_zones', False)
             zone.all_zones = zone_info.get('all_zones', [])
             zone.overlap_percent = zone_info.get('overlap_percent')
             
             gp_data.zone = zone
             
-            # Добавляем предупреждение, если участок в нескольких зонах
             if zone_info.get('multiple_zones'):
                 all_zones_list = zone_info.get('all_zones', [])
                 zones_text = ", ".join([
@@ -295,36 +290,165 @@ def _analyze_planning_projects(gp_data: GPData, coords: List[Tuple[float, float]
 
 
 def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
-    """Проверить наличие ЗОУИТ"""
+    """
+    ПОЛНАЯ ВЕРСИЯ: Проверить наличие ЗОУИТ с реальным расчётом площади пересечения
+    """
     if not LayerPaths.ZOUIT.exists():
         logger.debug(f"Слой ЗОУИТ не найден: {LayerPaths.ZOUIT}")
         return
     
     try:
+        # Парсим слой ЗОУИТ с геометрией
         restrictions = parse_zouit_layer_extended(LayerPaths.ZOUIT, "ЗОУИТ")
         
         if not restrictions:
+            logger.info("Слой ЗОУИТ пуст или не содержит данных")
             return
         
-        found = find_restrictions_for_parcel(coords, restrictions)
+        logger.info(f"Загружено {len(restrictions)} ЗОУИТ из слоя для проверки")
         
-        for restr_dict in found:
-            restriction = RestrictionZone(
-                zone_type=restr_dict.get('zone_type', "ЗОУИТ"),
-                name=restr_dict.get('name'),
-                registry_number=restr_dict.get('registry_number'),
-                decision_number=restr_dict.get('decision_number'),
-                decision_date=restr_dict.get('decision_date'),
-                decision_authority=restr_dict.get('decision_authority'),
-            )
-            gp_data.zouit.append(restriction)
+        # Проверяем можем ли мы посчитать площадь
+        if len(coords) < 3:
+            logger.warning("Недостаточно координат для расчёта площади пересечения с ЗОУИТ")
+            # Используем старый метод без площади
+            found = find_restrictions_for_parcel(coords, restrictions)
+            for restr_dict in found:
+                restriction = RestrictionZone(
+                    zone_type=restr_dict.get('zone_type', "ЗОУИТ"),
+                    name=restr_dict.get('name'),
+                    registry_number=restr_dict.get('registry_number'),
+                    decision_number=restr_dict.get('decision_number'),
+                    decision_date=restr_dict.get('decision_date'),
+                    decision_authority=restr_dict.get('decision_authority'),
+                    area_sqm=None  # Не смогли посчитать площадь
+                )
+                gp_data.zouit.append(restriction)
+            
+            if found:
+                logger.info(f"Найдено ЗОУИТ: {len(found)} (без расчёта площади)")
+            return
         
-        if found:
-            logger.info(f"Найдено ЗОУИТ: {len(found)}")
+        # Проверяем доступность Shapely
+        if not SHAPELY_AVAILABLE:
+            logger.warning("Shapely не доступен. Расчёт площади недоступен. Используется старый метод.")
+            # Используем старый метод
+            found = find_restrictions_for_parcel(coords, restrictions)
+            for restr_dict in found:
+                restriction = RestrictionZone(
+                    zone_type=restr_dict.get('zone_type', "ЗОУИТ"),
+                    name=restr_dict.get('name'),
+                    registry_number=restr_dict.get('registry_number'),
+                    decision_number=restr_dict.get('decision_number'),
+                    decision_date=restr_dict.get('decision_date'),
+                    decision_authority=restr_dict.get('decision_authority'),
+                    area_sqm=None
+                )
+                gp_data.zouit.append(restriction)
+            
+            if found:
+                logger.info(f"Найдено ЗОУИТ: {len(found)} (без расчёта площади)")
+            return
+        
+        # === НОВОЕ: ПОЛНОЦЕННЫЙ РАСЧЁТ ПЛОЩАДЕЙ === #
+        
+        # Создаём полигон участка
+        try:
+            parcel_polygon = Polygon(coords)
+            if not parcel_polygon.is_valid:
+                logger.warning("Полигон участка некорректен, пытаемся исправить")
+                parcel_polygon = parcel_polygon.buffer(0)  # Попытка исправить геометрию
+                
+            logger.info(f"📐 Создан полигон участка. Площадь: {parcel_polygon.area:.2f} кв.м")
+            
+        except Exception as ex:
+            logger.warning(f"Ошибка создания полигона участка: {ex}. Используется старый метод.")
+            # Fallback на старый метод
+            found = find_restrictions_for_parcel(coords, restrictions)
+            for restr_dict in found:
+                restriction = RestrictionZone(
+                    zone_type=restr_dict.get('zone_type', "ЗОУИТ"),
+                    name=restr_dict.get('name'),
+                    registry_number=restr_dict.get('registry_number'),
+                    decision_number=restr_dict.get('decision_number'),
+                    decision_date=restr_dict.get('decision_date'),
+                    decision_authority=restr_dict.get('decision_authority'),
+                    area_sqm=None
+                )
+                gp_data.zouit.append(restriction)
+            
+            if found:
+                logger.info(f"Найдено ЗОУИТ: {len(found)} (без расчёта площади)")
+            return
+        
+        # Проверяем пересечения и считаем площади
+        found_restrictions = []
+        total_area = 0.0
+        
+        for i, restr in enumerate(restrictions):
+            restr_geom = restr.get('geometry')
+            if restr_geom is None:
+                logger.debug(f"ЗОУИТ {restr.get('name', 'Unknown')} не имеет геометрии, пропускаем")
+                continue
+            
+            try:
+                # Проверяем пересечение
+                if not parcel_polygon.intersects(restr_geom):
+                    continue
+                
+                # 🔥 РЕАЛЬНЫЙ РАСЧЁТ ПЛОЩАДИ ПЕРЕСЕЧЕНИЯ
+                intersection = parcel_polygon.intersection(restr_geom)
+                intersection_area = intersection.area if hasattr(intersection, 'area') else 0.0
+                
+                # ФИЛЬТР: Игнорируем ЗОУИТ с площадью менее 1 кв.м
+                if intersection_area < 1.0:
+                    logger.debug(f"Игнорируем ЗОУИТ {restr.get('name', 'Unknown')} - площадь пересечения слишком мала: {intersection_area:.3f} кв.м")
+                    continue
+                
+                # Создаём ограничение с площадью
+                restriction = RestrictionZone(
+                    zone_type=restr.get('zone_type', "ЗОУИТ"),
+                    name=restr.get('name'),
+                    registry_number=restr.get('registry_number'),
+                    decision_number=restr.get('decision_number'),
+                    decision_date=restr.get('decision_date'),
+                    decision_authority=restr.get('decision_authority'),
+                    area_sqm=intersection_area  # 🔥 РЕАЛЬНАЯ ПЛОЩАДЬ ПЕРЕСЕЧЕНИЯ
+                )
+                
+                gp_data.zouit.append(restriction)
+                found_restrictions.append(restriction)
+                total_area += intersection_area
+                
+                logger.info(f"✅ Найдена ЗОУИТ: {restriction.get_full_name()}, площадь пересечения: {intersection_area:.2f} кв.м")
+                
+            except Exception as ex:
+                logger.warning(f"Ошибка при расчёте площади пересечения с ЗОУИТ {restr.get('name', 'Unknown')}: {ex}")
+                # Добавляем без площади как fallback
+                restriction = RestrictionZone(
+                    zone_type=restr.get('zone_type', "ЗОУИТ"),
+                    name=restr.get('name'),
+                    registry_number=restr.get('registry_number'),
+                    decision_number=restr.get('decision_number'),
+                    decision_date=restr.get('decision_date'),
+                    decision_authority=restr.get('decision_authority'),
+                    area_sqm=None
+                )
+                gp_data.zouit.append(restriction)
+                found_restrictions.append(restriction)
+        
+        # Итоговая статистика
+        if found_restrictions:
+            areas_calculated = [r for r in found_restrictions if r.area_sqm is not None]
+            logger.info(f"📊 Найдено ЗОУИТ: {len(found_restrictions)}")
+            logger.info(f"📐 С рассчитанными площадями: {len(areas_calculated)}")
+            if total_area > 0:
+                logger.info(f"📊 Общая площадь пересечения: {total_area:.2f} кв.м")
+        else:
+            logger.info("ЗОУИТ не обнаружены для участка")
         
     except Exception as ex:
         msg = f"Ошибка при проверке ЗОУИТ: {ex}"
-        logger.warning(msg)
+        logger.exception(msg)
         gp_data.add_warning(msg)
 
 

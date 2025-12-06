@@ -13,6 +13,7 @@ import zipfile
 
 from parsers.egrn_parser import parse_egrn_xml, EGRNData, Coord as ECoord
 from generator.midmif_builder import build_mid_mif_from_contours
+from utils.coords import renumber_egrn_contours
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ async def preview_coordinates(file: UploadFile = File(...)):
             )
         
         # Пересчитываем нумерацию точек
-        numbered_contours = _renumber_contours(egrn.contours)
+        numbered_contours = renumber_egrn_contours(egrn.contours)
         
         # Собираем все точки
         all_points = [
@@ -155,7 +156,7 @@ async def generate_midmif(file: UploadFile = File(...)):
             )
         
         # Пересчитываем нумерацию точек
-        numbered_contours = _renumber_contours(egrn.contours)
+        numbered_contours = renumber_egrn_contours(egrn.contours)
         
         # ИСПРАВЛЕНО: Формируем структуру для генератора с поменянными координатами
         # В парсере ЕГРН: pt.x = север, pt.y = восток
@@ -201,50 +202,3 @@ async def generate_midmif(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Ошибка обработки файла: {str(ex)}"
         )
-
-
-# ===================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===================== #
-
-def _renumber_contours(contours: List[List[ECoord]]) -> List[List[ECoord]]:
-    """
-    Пересчитывает нумерацию точек в контурах.
-    
-    Логика:
-    - Внутри контура точки с одинаковыми координатами получают один номер
-    - Между контурами номера идут сквозняком (следующий контур начинается с max+1)
-    
-    Args:
-        contours: Список контуров из ЕГРН
-    
-    Returns:
-        Список контуров с пересчитанной нумерацией
-    """
-    numbered_contours: List[List[ECoord]] = []
-    next_global_num = 1
-    
-    for contour in contours:
-        coord_to_num = {}  # ключ: (normx, normy) -> номер точки
-        contour_numbered: List[ECoord] = []
-        
-        for pt in contour:
-            # Нормализуем координаты
-            normx = pt.x.strip().replace(",", ".")
-            normy = pt.y.strip().replace(",", ".")
-            key = (normx, normy)
-            
-            # Если координата уже встречалась в этом контуре - используем тот же номер
-            if key in coord_to_num:
-                num_val = coord_to_num[key]
-            else:
-                # Новая координата - присваиваем новый номер
-                num_val = next_global_num
-                coord_to_num[key] = num_val
-                next_global_num += 1
-            
-            contour_numbered.append(
-                ECoord(num=str(num_val), x=pt.x, y=pt.y)
-            )
-        
-        numbered_contours.append(contour_numbered)
-    
-    return numbered_contours

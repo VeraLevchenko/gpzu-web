@@ -3,6 +3,8 @@
 
 Все модули (Kaiten, MidMif, TU, ГПЗУ) используют эти endpoints
 вместо дублирования кода парсинга.
+
+ОБНОВЛЕНО: добавлена передача площадей ЗОУИТ в API ответе
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
@@ -14,6 +16,8 @@ from parsers.application_parser import parse_application_docx
 from parsers.egrn_parser import parse_egrn_xml
 from models.gp_data import GPData, ParcelInfo
 from utils.spatial_analysis import perform_spatial_analysis
+from utils.coords import renumber_egrn_contours
+
 
 router = APIRouter(prefix="/api/parsers", tags=["parsers"])
 logger = logging.getLogger("gpzu-web.parsers")
@@ -76,6 +80,11 @@ async def parse_egrn(file: UploadFile = File(...)):
         # parse_egrn_xml возвращает объект EGRNData
         egrn_data = parse_egrn_xml(content)
         
+        # Нумерация точек как для MID/MIF (общая функция)
+        # contours: List[List[Coord]]
+        numbered_contours = renumber_egrn_contours(egrn_data.contours)
+        flat_coords = [pt for contour in numbered_contours for pt in contour]
+        
         # Преобразуем в словарь
         result = {
             "cadnum": egrn_data.cadnum,
@@ -91,11 +100,14 @@ async def parse_egrn(file: UploadFile = File(...)):
                     "x": coord.x,
                     "y": coord.y
                 }
-                for coord in egrn_data.coordinates
+                for coord in flat_coords
             ]
         }
         
-        logger.info(f"ЕГРН распарсен: КН={result.get('cadnum')}, точек={len(result.get('coordinates', []))}")
+        logger.info(
+            f"ЕГРН распарсен: КН={result.get('cadnum')}, "
+            f"точек={len(result.get('coordinates', []))}"
+        )
         
         return JSONResponse(content={
             "success": True,
@@ -113,6 +125,7 @@ async def spatial_analysis(request: Request):
     Пространственный анализ участка.
     
     Используется модулями: ГПЗУ (автоматически), остальные по запросу
+    ОБНОВЛЕНО: возвращает площади ЗОУИТ
     """
     try:
         data = await request.json()
@@ -146,7 +159,6 @@ async def spatial_analysis(request: Request):
                 "name": gp_data.zone.name if gp_data.zone else ""
             } if gp_data.zone else None,
             
-            # НОВОЕ: Добавляем информацию о районе
             "district": {
                 "code": gp_data.district.code if gp_data.district else "",
                 "name": gp_data.district.name if gp_data.district else ""
@@ -163,11 +175,13 @@ async def spatial_analysis(request: Request):
                 for obj in gp_data.capital_objects
             ],
             
+            # 🔥 ОБНОВЛЕНО: Добавлено поле "area" для каждой ЗОУИТ
             "zouit": [
                 {
                     "name": z.name,
                     "registry_number": z.registry_number,
-                    "restrictions": z.restrictions
+                    "restrictions": z.restrictions,
+                    "area": z.area_sqm,   # ← полностью как было, float без округления
                 }
                 for z in gp_data.zouit
             ],
@@ -186,7 +200,14 @@ async def spatial_analysis(request: Request):
             "errors": gp_data.errors
         }
         
-        logger.info(f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, ОКС={len(result['capital_objects'])}")
+        # Подсчёт ЗОУИТ с площадями для логирования
+        zouit_with_areas = sum(1 for z in gp_data.zouit if z.area_sqm is not None and z.area_sqm > 0)
+        
+        logger.info(
+            f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, "
+            f"ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])} "
+            f"(с площадями: {zouit_with_areas})"
+        )
         
         return JSONResponse(content={
             "success": True,
