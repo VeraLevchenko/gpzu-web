@@ -1,0 +1,269 @@
+/* frontend/src/components/GP/RefusalFlow.css */
+
+/* ============================================
+   КОНТЕЙНЕР И ОСНОВНЫЕ ЭЛЕМЕНТЫ
+   ============================================ */
+
+.refusal-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
+  padding: 40px 20px;
+}
+
+.refusal-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto 32px;
+  flex-wrap: wrap;
+}
+
+.refusal-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.refusal-card {
+  max-width: 1000px;
+  margin: 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 2px solid #ffccc7;
+}
+
+/* ============================================
+   ALERT (ПРЕДУПРЕЖДЕНИЕ О РАЗРАБОТКЕ)
+   ============================================ */
+
+.refusal-card .ant-alert-warning {
+  border-radius: 8px;
+  border: 2px solid #faad14;
+}
+
+.refusal-card .ant-alert-warning .ant-alert-icon {
+  font-size: 24px;
+}
+
+/* ============================================
+   STEPS (ИНДИКАТОР ПРОГРЕССА)
+   ============================================ */
+
+.refusal-card .ant-steps {
+  margin-bottom: 40px;
+}
+
+/* Красная тема для отказа */
+.refusal-card .ant-steps-item-process .ant-steps-item-icon {
+  background-color: #f5222d;
+  border-color: #f5222d;
+}
+
+.refusal-card .ant-steps-item-process .ant-steps-item-icon .ant-steps-icon {
+  color: white;
+}
+
+.refusal-card .ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: #f5222d;
+}
+
+.refusal-card .ant-steps-item-finish .ant-steps-item-icon {
+  border-color: #f5222d;
+}
+
+.refusal-card .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: #f5222d;
+}
+
+.refusal-card .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-tail::after {
+  background-color: #f5222d;
+}
+
+/* ============================================
+   ПУСТОЕ СОСТОЯНИЕ (ЗАГЛУШКА)
+   ============================================ */
+
+.refusal-card .ant-empty {
+  padding: 40px 20px;
+}
+
+.refusal-card .ant-empty-image {
+  height: 120px;
+  margin-bottom: 16px;
+}
+
+.refusal-card .ant-empty-description h3 {
+  font-size: 1.5rem;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.refusal-card .ant-empty-description > div > p {
+  font-size: 1rem;
+  color: #8c8c8c;
+  margin-bottom: 24px;
+}
+
+/* Карточка с планируемым функционалом */
+.refusal-card .ant-empty-description .ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.refusal-card .ant-empty-description .ant-card h4 {
+  font-size: 1.1rem;
+  color: #262626;
+  margin-bottom: 12px;
+}
+
+.refusal-card .ant-empty-description .ant-card ul {
+  color: #595959;
+  line-height: 1.8;
+}
+
+.refusal-card .ant-empty-description .ant-card ul li {
+  margin-bottom: 4px;
+}
+
+/* ============================================
+   КНОПКИ
+   ============================================ */
+
+.refusal-card .ant-btn-primary {
+  background: linear-gradient(135deg, #f5222d 0%, #cf1322 100%);
+  border: none;
+  height: 48px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.refusal-card .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #ff4d4f 0%, #f5222d 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 34, 45, 0.3);
+}
+
+.refusal-card .ant-btn-default {
+  height: 44px;
+  font-size: 1rem;
+  border-radius: 8px;
+  border-color: #d9d9d9;
+}
+
+.refusal-card .ant-btn-default:hover {
+  color: #f5222d;
+  border-color: #f5222d;
+}
+
+/* ============================================
+   СПИННЕР ЗАГРУЗКИ
+   ============================================ */
+
+.refusal-card .ant-spin-nested-loading {
+  min-height: 400px;
+}
+
+.refusal-card .ant-spin-container {
+  min-height: 400px;
+}
+
+.refusal-card .ant-spin-dot-item {
+  background-color: #f5222d;
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ
+   ============================================ */
+
+/* Планшеты и небольшие экраны */
+@media (max-width: 768px) {
+  .refusal-container {
+    padding: 20px 10px;
+  }
+
+  .refusal-header {
+    margin-bottom: 20px;
+  }
+
+  .refusal-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .refusal-card .ant-empty {
+    padding: 20px 10px;
+  }
+
+  .refusal-card .ant-empty-description h3 {
+    font-size: 1.2rem;
+  }
+
+  .refusal-card .ant-empty-description .ant-card h4 {
+    font-size: 1rem;
+  }
+}
+
+/* Мобильные устройства */
+@media (max-width: 480px) {
+  .refusal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .refusal-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .refusal-card {
+    border-width: 1px;
+  }
+
+  .refusal-card .ant-steps {
+    margin-bottom: 24px;
+  }
+
+  .refusal-card .ant-steps-item-title {
+    font-size: 0.9rem;
+  }
+
+  .refusal-card .ant-steps-item-description {
+    display: none;
+  }
+
+  .refusal-card .ant-btn-primary {
+    height: 44px;
+    font-size: 1rem;
+  }
+}
+
+/* ============================================
+   АНИМАЦИИ
+   ============================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.refusal-card {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* Hover эффект для кнопки "Назад" */
+.refusal-header .ant-btn {
+  transition: all 0.3s ease;
+}
+
+.refusal-header .ant-btn:hover {
+  transform: translateX(-4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}

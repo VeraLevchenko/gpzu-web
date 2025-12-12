@@ -70,17 +70,14 @@ export const parsersApi = {
 // МОДУЛЬ: KAITEN
 // ========================================
 export const kaitenApi = {
-  // ИСПОЛЬЗУЕТ: parsersApi.parseApplication
   parseApplication: (file) => parsersApi.parseApplication(file),
-  
   createTask: (data) => api.post('/api/gp/kaiten/create-task', data),
 };
 
 // ========================================
-// МОДУЛЬ: MID/MIF (ИСПРАВЛЕНО)
+// МОДУЛЬ: MID/MIF
 // ========================================
 export const midmifApi = {
-  // ИСПРАВЛЕНО: Используем специфический endpoint для предпросмотра MID/MIF
   previewCoordinates: (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -104,10 +101,7 @@ export const midmifApi = {
 // МОДУЛЬ: ТУ (Технические условия)
 // ========================================
 export const tuApi = {
-  // ИСПОЛЬЗУЕТ: parsersApi.parseApplication
   parseApplication: (file) => parsersApi.parseApplication(file),
-
-  // ИСПОЛЬЗУЕТ: parsersApi.parseEgrn
   parseEgrn: (file) => parsersApi.parseEgrn(file),
 
   generateTu: async (data) => {
@@ -133,10 +127,7 @@ export const tuApi = {
 // МОДУЛЬ: ГРАДПЛАН
 // ========================================
 export const gradplanApi = {
-  // ИСПОЛЬЗУЕТ: parsersApi.parseEgrn
   parseEgrn: (file) => parsersApi.parseEgrn(file),
-
-  // ИСПОЛЬЗУЕТ: parsersApi.spatialAnalysis
   spatialAnalysis: (data) => parsersApi.spatialAnalysis(data),
 
   generate: async (data) => {
@@ -160,6 +151,25 @@ export const gradplanApi = {
     link.remove();
     window.URL.revokeObjectURL(url);
     
+    return response;
+  }
+};
+
+// ========================================
+// МОДУЛЬ: ОТКАЗ В ВЫДАЧЕ ГПЗУ
+// ========================================
+export const refusalApi = {
+  // ИСПОЛЬЗУЕТ: parsersApi.parseApplication
+  parseApplication: (file) => parsersApi.parseApplication(file),
+
+  // ИСПОЛЬЗУЕТ: parsersApi.parseEgrn
+  parseEgrn: (file) => parsersApi.parseEgrn(file),
+
+  // Генерация документа отказа
+  generate: async (data) => {
+    const response = await api.post('/api/gp/refusal/generate', data, {
+      responseType: 'blob',
+    });
     return response;
   }
 };

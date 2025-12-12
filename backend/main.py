@@ -5,13 +5,12 @@
 Веб-приложение для автоматизации работы с градостроительными планами
 земельных участков (ГПЗУ) и сопутствующими документами.
 
-ИСПРАВЛЕНО: Добавлен правильный импорт и подключение midmif router
-
 Модули:
 - Kaiten: создание задач в Kaiten
 - MID/MIF: подготовка файлов для MapInfo
 - ТУ: формирование запросов технических условий
 - ГПЗУ: подготовка градостроительных планов
+- ОТКАЗ: формирование отказов в выдаче ГПЗУ  ← НОВОЕ
 
 Общие сервисы:
 - Parsers: парсинг заявлений, ЕГРН, пространственный анализ
@@ -28,9 +27,10 @@ from fastapi.responses import FileResponse
 from api.auth import router as auth_router
 from api.parsers import router as parsers_router  # Общие парсеры
 from api.gp.kaiten import router as kaiten_router
-from api.gp.midmif import router as midmif_router  # ← ИСПРАВЛЕНО: Добавлен импорт
+from api.gp.midmif import router as midmif_router
 from api.gp.tu import router as tu_router
 from api.gp.gradplan import router as gradplan_router
+from api.gp.refusal import router as refusal_router  # ← НОВОЕ
 
 # ========================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -107,9 +107,10 @@ app.include_router(parsers_router)  # /api/parsers/*
 
 # Модули градостроительного плана
 app.include_router(kaiten_router)      # Создание задач в Kaiten
-app.include_router(midmif_router)      # ← ИСПРАВЛЕНО: Добавлено подключение MID/MIF router
+app.include_router(midmif_router)      # Подготовка MID/MIF
 app.include_router(tu_router)          # Формирование запросов ТУ
 app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
+app.include_router(refusal_router)     # ← НОВОЕ: Формирование отказов
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
@@ -131,9 +132,10 @@ async def health_check():
             "auth": "enabled",
             "parsers": "enabled",
             "kaiten": "enabled",
-            "midmif": "enabled",      # ← ИСПРАВЛЕНО: Добавлено в статус
+            "midmif": "enabled",
             "tu": "enabled",
             "gradplan": "enabled",
+            "refusal": "enabled",  # ← НОВОЕ
         }
     }
 
@@ -179,6 +181,12 @@ async def api_info():
                 "prefix": "/api/gp/gradplan",
                 "description": "Подготовка градостроительных планов",
                 "endpoints": 3
+            },
+            {
+                "name": "Отказ",  # ← НОВОЕ
+                "prefix": "/api/gp/refusal",
+                "description": "Формирование отказов в выдаче ГПЗУ",
+                "endpoints": 2
             },
         ]
     }

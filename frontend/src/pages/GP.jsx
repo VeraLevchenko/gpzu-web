@@ -5,6 +5,7 @@ import {
   EnvironmentOutlined, 
   FileProtectOutlined,
   FileTextOutlined,
+  CloseCircleOutlined,
   ArrowLeftOutlined 
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -104,6 +105,27 @@ const GP = () => {
               block 
               size="large" 
               style={{ backgroundColor: '#722ed1', marginTop: 16 }}
+            >
+              Открыть
+            </Button>
+          </Card>
+        </Col>
+
+        {/* ОТКАЗ - Красная карточка (НОВОЕ) */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card hoverable className="gp-module-card" onClick={() => navigate('/gp/refusal')}>
+            <div className="module-icon-container" style={{ backgroundColor: '#f5222d' }}>
+              <CloseCircleOutlined style={{ fontSize: 64, color: 'white' }} />
+            </div>
+            <h2 className="module-title">Отказ в выдаче ГПЗУ</h2>
+            <p className="module-description">
+              Формирование мотивированного отказа в предоставлении градостроительного плана
+            </p>
+            <Button 
+              type="primary" 
+              block 
+              size="large" 
+              style={{ backgroundColor: '#f5222d', marginTop: 16 }}
             >
               Открыть
             </Button>

@@ -1,11 +1,19 @@
 # parsers/application_parser.py
+"""
+ОБНОВЛЁННАЯ ВЕРСИЯ с поддержкой телефона и email
+
+ИЗМЕНЕНИЯ:
+- Добавлено поле phone: Optional[str] = None
+- Добавлено поле email: Optional[str] = None
+- Добавлена функция _extract_phone_and_email_from_paragraphs()
+- Обратная совместимость: старые модули не сломаются (поля опциональные)
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
 from io import BytesIO
 from typing import Optional, Tuple
-
 import re
 from docx import Document
 
@@ -14,6 +22,8 @@ from docx import Document
 class ApplicationData:
     """
     Результат разбора заявления.
+    
+    ОБНОВЛЕНО: Добавлены поля phone и email
     """
     number: Optional[str] = None          # номер заявления
     date: Optional[date] = None           # дата заявления (объект date)
@@ -22,6 +32,10 @@ class ApplicationData:
     cadnum: Optional[str] = None          # кадастровый номер ЗУ
     purpose: Optional[str] = None         # цель использования ЗУ
     service_date: Optional[date] = None   # дата оказания услуги (14 раб. дней)
+    
+    # === НОВЫЕ ПОЛЯ === #
+    phone: Optional[str] = None           # номер телефона заявителя
+    email: Optional[str] = None           # адрес электронной почты заявителя
 
 
 # ------------------------- ВСПОМОГАТЕЛЬНЫЕ ------------------------- #
@@ -186,19 +200,84 @@ def _extract_cadnum_and_purpose_from_tables(doc: Document) -> Tuple[Optional[str
     return cad, purpose
 
 
+# ---------------------- НОВАЯ ФУНКЦИЯ: ТЕЛЕФОН И EMAIL ---------------------- #
+
+def _extract_phone_and_email_from_paragraphs(doc: Document) -> Tuple[Optional[str], Optional[str]]:
+    """
+    НОВОЕ: Извлекает телефон и email из параграфов документа.
+    
+    Ищет строку вида:
+    "Номер телефона и адрес электронной почты для связи: +7(999)6485654 nazarasurov596@gmail.com"
+    
+    Returns:
+        Tuple[phone, email]
+    """
+    phone = None
+    email = None
+    
+    # Собираем весь текст из параграфов
+    all_text = ""
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            all_text += text + "\n"
+    
+    # Ищем email (более специфичный паттерн, чтобы не захватить лишнее)
+    email_pattern = r'[\w\.-]+@[\w\.-]+\.\w+'
+    email_matches = re.findall(email_pattern, all_text)
+    if email_matches:
+        email = email_matches[0]  # Берём первый найденный email
+    
+    # Ищем телефон (10-11 цифр с возможными разделителями)
+    # Паттерн: +7(...) или 8... или просто цифры
+    phone_pattern = r'[\+\d][\d\s\-\(\)]{9,}'
+    phone_matches = re.findall(phone_pattern, all_text)
+    
+    # Фильтруем: оставляем только те, где есть минимум 10 цифр
+    valid_phones = []
+    for p in phone_matches:
+        digits = re.findall(r'\d', p)
+        if len(digits) >= 10:
+            valid_phones.append(p.strip())
+    
+    # Берём самый длинный телефон (обычно это контактный, а не из паспорта)
+    if valid_phones:
+        # Сортируем по длине и берём первый
+        valid_phones.sort(key=lambda x: len(x), reverse=True)
+        
+        # Ищем телефон который начинается с +7 или 8 (российский формат)
+        for p in valid_phones:
+            if p.startswith('+7') or p.startswith('8'):
+                phone = p
+                break
+        
+        # Если не нашли российский - берём первый
+        if not phone and valid_phones:
+            phone = valid_phones[0]
+    
+    return phone, email
+
+
 # ------------------------ ГЛАВНАЯ ФУНКЦИЯ ------------------------ #
 
 def parse_application_docx(doc_bytes: bytes) -> ApplicationData:
     """
     Парсер заявления, заточенный под типовую форму "Заявление о выдаче ГПЗУ"
     (как в присланных примерах: всё основное в таблицах).
+    
+    ОБНОВЛЕНО: Теперь извлекает телефон и email из параграфов
     """
     doc = _load_doc(doc_bytes)
 
+    # Извлекаем данные из таблиц (КАК РАНЬШЕ)
     number, app_date, date_text = _extract_number_and_date_from_tables(doc)
     applicant = _extract_applicant_from_tables(doc)
     cadnum, purpose = _extract_cadnum_and_purpose_from_tables(doc)
 
+    # === НОВОЕ: Извлекаем телефон и email === #
+    phone, email = _extract_phone_and_email_from_paragraphs(doc)
+
+    # Рассчитываем дату оказания услуги
     service_date: Optional[date] = None
     if app_date:
         service_date = add_working_days(app_date, days=14)
@@ -211,4 +290,7 @@ def parse_application_docx(doc_bytes: bytes) -> ApplicationData:
         cadnum=cadnum,
         purpose=purpose,
         service_date=service_date,
+        # === НОВЫЕ ПОЛЯ === #
+        phone=phone,
+        email=email,
     )

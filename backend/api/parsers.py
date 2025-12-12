@@ -1,10 +1,7 @@
 """
 Общий API для парсеров.
 
-Все модули (Kaiten, MidMif, TU, ГПЗУ) используют эти endpoints
-вместо дублирования кода парсинга.
-
-ОБНОВЛЕНО: добавлена передача площадей ЗОУИТ в API ответе
+ОБНОВЛЕНО: Добавлена поддержка phone и email в ответе /api/parsers/application
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
@@ -28,7 +25,9 @@ async def parse_application(file: UploadFile = File(...)):
     """
     Парсинг заявления из DOCX файла.
     
-    Используется модулями: Kaiten, TU, ГПЗУ
+    ОБНОВЛЕНО: Теперь возвращает phone и email
+    
+    Используется модулями: Kaiten, TU, ГПЗУ, ОТКАЗ
     """
     try:
         if not file.filename.endswith('.docx'):
@@ -48,10 +47,13 @@ async def parse_application(file: UploadFile = File(...)):
             "applicant": app_data.applicant,
             "cadnum": app_data.cadnum,
             "purpose": app_data.purpose,
-            "service_date": app_data.service_date.strftime('%Y-%m-%d') if isinstance(app_data.service_date, date) else str(app_data.service_date) if app_data.service_date else None
+            "service_date": app_data.service_date.strftime('%Y-%m-%d') if isinstance(app_data.service_date, date) else str(app_data.service_date) if app_data.service_date else None,
+            # === НОВЫЕ ПОЛЯ === #
+            "phone": app_data.phone,
+            "email": app_data.email,
         }
         
-        logger.info(f"Заявление распарсено: №{result.get('number')}, КН={result.get('cadnum')}")
+        logger.info(f"Заявление распарсено: №{result.get('number')}, КН={result.get('cadnum')}, телефон={result.get('phone')}, email={result.get('email')}")
         
         return JSONResponse(content={
             "success": True,
@@ -68,7 +70,7 @@ async def parse_egrn(file: UploadFile = File(...)):
     """
     Парсинг выписки ЕГРН из XML файла.
     
-    Используется модулями: MidMif, TU, ГПЗУ
+    Используется модулями: MidMif, TU, ГПЗУ, ОТКАЗ
     """
     try:
         if not file.filename.endswith('.xml'):
@@ -125,7 +127,6 @@ async def spatial_analysis(request: Request):
     Пространственный анализ участка.
     
     Используется модулями: ГПЗУ (автоматически), остальные по запросу
-    ОБНОВЛЕНО: возвращает площади ЗОУИТ
     """
     try:
         data = await request.json()
@@ -175,13 +176,12 @@ async def spatial_analysis(request: Request):
                 for obj in gp_data.capital_objects
             ],
             
-            # 🔥 ОБНОВЛЕНО: Добавлено поле "area" для каждой ЗОУИТ
             "zouit": [
                 {
                     "name": z.name,
                     "registry_number": z.registry_number,
                     "restrictions": z.restrictions,
-                    "area": z.area_sqm,   # ← полностью как было, float без округления
+                    "area": z.area_sqm,
                 }
                 for z in gp_data.zouit
             ],
@@ -200,13 +200,9 @@ async def spatial_analysis(request: Request):
             "errors": gp_data.errors
         }
         
-        # Подсчёт ЗОУИТ с площадями для логирования
-        zouit_with_areas = sum(1 for z in gp_data.zouit if z.area_sqm is not None and z.area_sqm > 0)
-        
         logger.info(
             f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, "
-            f"ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])} "
-            f"(с площадями: {zouit_with_areas})"
+            f"ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])}"
         )
         
         return JSONResponse(content={
