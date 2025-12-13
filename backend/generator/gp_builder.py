@@ -591,16 +591,23 @@ class GPBuilder:
         """Подготавливает контекст для шаблона."""
         context = dict(gp_data)
 
+        # === ИСПРАВЛЕНИЕ: Форматирование даты заявления === #
         application = gp_data.get("application") or {}
-        app_date = application.get("date")
+        app_date = application.get("date")  # Может быть строка "2025-11-21" или "«21» ноября 2025 г."
 
         if app_date:
             try:
                 from datetime import datetime
-                date_str = str(app_date).strip().split()[0]  # Убираем время если есть
+                date_str = str(app_date).strip()
+                
+                # Убираем время если есть (например "2025-11-21 00:00:00" -> "2025-11-21")
+                if " " in date_str:
+                    date_str = date_str.split()[0]
                 
                 # Пробуем распарсить разные форматы
                 dt = None
+                
+                # Попытка 1: ISO формат YYYY-MM-DD
                 for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d", "%d/%m/%Y"]:
                     try:
                         dt = datetime.strptime(date_str, fmt)
@@ -608,14 +615,52 @@ class GPBuilder:
                     except ValueError:
                         continue
                 
+                # Если не получилось распарсить стандартные форматы,
+                # пробуем формат «21» ноября 2025 г.
+                if not dt and "«" in app_date and "»" in app_date:
+                    try:
+                        # Словарь месяцев
+                        months = {
+                            "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
+                            "мая": 5, "июня": 6, "июля": 7, "августа": 8,
+                            "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
+                        }
+                        
+                        # Извлекаем день из «21»
+                        day_part = app_date.split("«", 1)[1].split("»", 1)[0].strip()
+                        day = int(day_part)
+                        
+                        # Извлекаем остальную часть: "ноября 2025 г."
+                        rest = app_date.split("»", 1)[1].strip()
+                        rest = rest.replace("г.", "").replace("г", "").strip()
+                        parts = rest.split()
+                        
+                        if len(parts) >= 2:
+                            month_name = parts[0].lower()
+                            year = int(parts[1])
+                            month = months.get(month_name)
+                            
+                            if month and day and year:
+                                dt = datetime(year, month, day)
+                    
+                    except Exception as ex:
+                        logger.warning(f"Не удалось распарсить дату '{app_date}': {ex}")
+                
+                # Форматируем в DD.MM.YYYY
                 if dt:
                     context["application_date_formatted"] = dt.strftime("%d.%m.%Y")
+                    logger.info(f"✅ Дата заявления отформатирована: {context['application_date_formatted']}")
                 else:
-                    context["application_date_formatted"] = app_date
-            except Exception:
-                context["application_date_formatted"] = app_date
+                    # Если не удалось распарсить - оставляем как есть
+                    context["application_date_formatted"] = str(app_date)
+                    logger.warning(f"⚠️ Дата заявления не распознана, используется как есть: {app_date}")
+                    
+            except Exception as ex:
+                logger.error(f"❌ Ошибка форматирования даты: {ex}")
+                context["application_date_formatted"] = str(app_date) if app_date else ""
         else:
             context["application_date_formatted"] = ""
+            logger.warning("⚠️ Дата заявления отсутствует")
 
         # НОВОЕ: Информация о районе
         district = gp_data.get("district") or {}

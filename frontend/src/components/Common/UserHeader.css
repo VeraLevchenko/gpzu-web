@@ -1,0 +1,198 @@
+/* frontend/src/components/Common/UserHeader.css */
+
+/* ============================================
+   ОСНОВНОЙ КОНТЕЙНЕР ШАПКИ
+   ============================================ */
+
+.user-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 16px 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.user-header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+/* ============================================
+   ЛЕВАЯ ЧАСТЬ - НАВИГАЦИЯ И ЗАГОЛОВОК
+   ============================================ */
+
+.user-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.back-btn {
+  padding: 8px 20px;
+  font-size: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateX(-4px);
+}
+
+.user-header-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   ПРАВАЯ ЧАСТЬ - ПОЛЬЗОВАТЕЛЬ И ВЫХОД
+   ============================================ */
+
+.user-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 24px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.user-icon {
+  font-size: 1.2rem;
+  color: white;
+}
+
+.user-name {
+  color: white;
+  font-weight: 500;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.logout-btn {
+  padding: 8px 20px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 77, 79, 0.9);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(255, 77, 79, 0.3);
+}
+
+.logout-btn:hover {
+  background: rgba(255, 77, 79, 1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.4);
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ
+   ============================================ */
+
+/* Планшеты */
+@media (max-width: 768px) {
+  .user-header {
+    padding: 12px 16px;
+  }
+
+  .user-header-content {
+    flex-wrap: wrap;
+  }
+
+  .user-header-title {
+    font-size: 1.3rem;
+  }
+
+  .user-info {
+    padding: 6px 12px;
+  }
+
+  .user-name {
+    font-size: 0.95rem;
+  }
+
+  .back-btn,
+  .logout-btn {
+    padding: 6px 16px;
+    font-size: 0.95rem;
+  }
+}
+
+/* Мобильные устройства */
+@media (max-width: 480px) {
+  .user-header {
+    padding: 10px 12px;
+  }
+
+  .user-header-content {
+    gap: 12px;
+  }
+
+  .user-header-left {
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .user-header-title {
+    font-size: 1.1rem;
+  }
+
+  .user-info {
+    padding: 6px 10px;
+  }
+
+  .user-name {
+    display: none; /* Скрываем имя на маленьких экранах */
+  }
+
+  .user-icon {
+    font-size: 1.3rem;
+  }
+
+  .back-btn {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+  }
+
+  .logout-btn {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+  }
+
+  .logout-btn span {
+    display: none; /* Скрываем текст "Выйти", оставляем только иконку */
+  }
+}

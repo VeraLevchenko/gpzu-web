@@ -1,13 +1,125 @@
-.home-container { min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 40px 20px; }
-.home-header { display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto 20px; flex-wrap: wrap; gap: 20px; }
-.home-header h1 { font-size: 2rem; font-weight: 700; color: #1890ff; margin: 0; }
-.logout-btn { padding: 10px 24px; font-size: 1rem; border: none; border-radius: 8px; background: #ff4d4f; color: white; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.3s ease; }
-.logout-btn:hover { background: #ff7875; transform: translateY(-2px); }
-.module-card { border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: all 0.3s ease; border: none; }
-.module-card:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
-.card-cover { height: 280px; display: flex; align-items: center; justify-content: center; }
-.gradplan-cover { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.card-icon { font-size: 120px; color: white; opacity: 0.9; }
-.card-content { padding: 24px; text-align: center; }
-.card-content h2 { font-size: 1.8rem; margin: 0 0 16px 0; color: #262626; }
-.card-content p { font-size: 1rem; color: #595959; line-height: 1.6; margin: 0; }
+/* frontend/src/pages/Home.css */
+
+/* ============================================
+   ОСНОВНОЙ КОНТЕЙНЕР
+   ============================================ */
+
+.home-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.home-content {
+  padding: 60px 20px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   КАРТОЧКИ МОДУЛЕЙ
+   ============================================ */
+
+.module-card {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  border: none;
+  height: 100%;
+}
+
+.module-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.card-cover {
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gradplan-cover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.card-icon {
+  font-size: 120px;
+  color: white;
+  opacity: 0.9;
+}
+
+.card-content {
+  padding: 24px;
+  text-align: center;
+}
+
+.card-content h2 {
+  font-size: 1.8rem;
+  margin: 0 0 16px 0;
+  color: #262626;
+  font-weight: 600;
+}
+
+.card-content p {
+  font-size: 1rem;
+  color: #595959;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ
+   ============================================ */
+
+/* Планшеты */
+@media (max-width: 768px) {
+  .home-content {
+    padding: 40px 16px 32px;
+  }
+
+  .card-cover {
+    height: 200px;
+  }
+
+  .card-icon {
+    font-size: 80px;
+  }
+
+  .card-content h2 {
+    font-size: 1.5rem;
+  }
+
+  .card-content p {
+    font-size: 0.95rem;
+  }
+}
+
+/* Мобильные устройства */
+@media (max-width: 480px) {
+  .home-content {
+    padding: 32px 12px 24px;
+  }
+
+  .card-cover {
+    height: 160px;
+  }
+
+  .card-icon {
+    font-size: 64px;
+  }
+
+  .card-content {
+    padding: 20px 16px;
+  }
+
+  .card-content h2 {
+    font-size: 1.3rem;
+    margin-bottom: 12px;
+  }
+
+  .card-content p {
+    font-size: 0.9rem;
+  }
+}

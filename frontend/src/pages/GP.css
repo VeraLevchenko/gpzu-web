@@ -1,8 +1,138 @@
-.gp-container { min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 40px 20px; }
-.gp-header { display: flex; align-items: center; gap: 20px; max-width: 1400px; margin: 0 auto; flex-wrap: wrap; }
-.gp-header h1 { font-size: 2.2rem; font-weight: 700; color: #262626; margin: 0; }
-.gp-module-card { border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: all 0.3s ease; text-align: center; padding: 24px; border: none; }
-.gp-module-card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.12); }
-.module-icon-container { width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; }
-.module-title { font-size: 1.4rem; font-weight: 600; margin: 16px 0; color: #262626; }
-.module-description { font-size: 0.95rem; color: #595959; margin-bottom: 24px; min-height: 48px; }
+/* frontend/src/pages/GP.css */
+
+/* ============================================
+   ОСНОВНОЙ КОНТЕЙНЕР
+   ============================================ */
+
+.gp-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.gp-content {
+  padding: 40px 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   КАРТОЧКИ МОДУЛЕЙ
+   ============================================ */
+
+.gp-module-card {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  border: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.gp-module-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.gp-module-card .ant-card-body {
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.module-icon-container {
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.gp-module-card:hover .module-icon-container {
+  transform: scale(1.05);
+}
+
+.module-title {
+  font-size: 1.5rem;
+  margin: 20px 24px 12px;
+  color: #262626;
+  font-weight: 600;
+  text-align: center;
+}
+
+.module-description {
+  font-size: 0.95rem;
+  color: #595959;
+  line-height: 1.6;
+  margin: 0 24px 20px;
+  text-align: center;
+  flex: 1;
+}
+
+.gp-module-card .ant-btn {
+  margin: 0 24px 24px;
+  height: 44px;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ
+   ============================================ */
+
+/* Планшеты */
+@media (max-width: 992px) {
+  .gp-content {
+    padding: 32px 16px;
+  }
+
+  .module-icon-container {
+    height: 160px;
+  }
+
+  .module-icon-container .anticon {
+    font-size: 56px !important;
+  }
+
+  .module-title {
+    font-size: 1.3rem;
+  }
+
+  .module-description {
+    font-size: 0.9rem;
+  }
+}
+
+/* Мобильные устройства */
+@media (max-width: 576px) {
+  .gp-content {
+    padding: 24px 12px;
+  }
+
+  .module-icon-container {
+    height: 140px;
+  }
+
+  .module-icon-container .anticon {
+    font-size: 48px !important;
+  }
+
+  .module-title {
+    font-size: 1.2rem;
+    margin: 16px 20px 10px;
+  }
+
+  .module-description {
+    font-size: 0.85rem;
+    margin: 0 20px 16px;
+  }
+
+  .gp-module-card .ant-btn {
+    margin: 0 20px 20px;
+    height: 40px;
+    font-size: 0.95rem;
+  }
+}
