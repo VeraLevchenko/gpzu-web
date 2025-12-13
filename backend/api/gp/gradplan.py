@@ -46,8 +46,6 @@ async def generate_gradplan(request: Request):
         cadnum = data["parcel"].get("cadnum", "UNKNOWN").replace(":", "-")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"GPZU_{app_number}_{cadnum}_{timestamp}.docx"
-        output_path = UPLOADS_DIR / output_filename
         
         # Генерация документа
         builder = GPBuilder(str(TEMPLATE_PATH))
