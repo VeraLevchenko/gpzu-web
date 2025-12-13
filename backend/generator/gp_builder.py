@@ -591,6 +591,32 @@ class GPBuilder:
         """Подготавливает контекст для шаблона."""
         context = dict(gp_data)
 
+        application = gp_data.get("application") or {}
+        app_date = application.get("date")
+
+        if app_date:
+            try:
+                from datetime import datetime
+                date_str = str(app_date).strip().split()[0]  # Убираем время если есть
+                
+                # Пробуем распарсить разные форматы
+                dt = None
+                for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d", "%d/%m/%Y"]:
+                    try:
+                        dt = datetime.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                
+                if dt:
+                    context["application_date_formatted"] = dt.strftime("%d.%m.%Y")
+                else:
+                    context["application_date_formatted"] = app_date
+            except Exception:
+                context["application_date_formatted"] = app_date
+        else:
+            context["application_date_formatted"] = ""
+
         # НОВОЕ: Информация о районе
         district = gp_data.get("district") or {}
         district_name = district.get("name") or ""
@@ -600,23 +626,33 @@ class GPBuilder:
 
         # Объекты капитального строительства
         capital_objects = gp_data.get("capital_objects") or []
+
         if capital_objects:
-            parts: List[str] = []
-            for idx, obj in enumerate(capital_objects, start=1):
-                name = obj.get("name") or "Объект капитального строительства"
-                area = obj.get("area")
-                floors = obj.get("floors")
-
-                obj_fragments: List[str] = [f"{idx}) {name}"]
-                if area:
-                    obj_fragments.append(f"площадью {area} кв. м")
-                if floors:
-                    obj_fragments.append(f"этажностью {floors} эт.")
-                parts.append(", ".join(obj_fragments))
-
-            context["capital_objects_text"] = "; ".join(parts)
+            # Подсчитываем количество объектов
+            count = len(capital_objects)
+            
+            # Правильное склонение слова "единица"
+            if count == 1:
+                unit_word = "единица"
+            elif 2 <= count <= 4:
+                unit_word = "единицы"
+            else:
+                unit_word = "единиц"
+            
+            # Формируем текст
+            context["capital_objects_text"] = (
+                f"в границах земельного участка расположены объекты капитального строительства. "
+                f"Количество объектов {count} {unit_word}. "
+                f"Объекты отображаются на чертеже(ах) градостроительного плана под порядковыми номерами. "
+                f"Описание объектов капитального строительства приводится в подразделе 3.1 "
+                f'"Объекты капитального строительства" или подразделе 3.2 '
+                f'"Объекты, включенные в единый государственный реестр объектов культурного наследия '
+                f'(памятников истории и культуры) народов Российской Федерации" раздела 3'
+            )
+            context["capital_objects_count"] = count
         else:
-            context["capital_objects_text"] = "Не предусмотрены"
+            context["capital_objects_text"] = "Объекты капитального строительства отсутствуют"
+            context["capital_objects_count"] = 0
 
         # ЗОУИТ в удобном виде для таблицы (раздел 6)
         zouit_raw = gp_data.get("zouit") or []
