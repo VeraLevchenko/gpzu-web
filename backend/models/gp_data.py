@@ -118,68 +118,46 @@ class PlanningProject:
     
     def get_formatted_description(self) -> str:
         """
-        Получить форматированное описание проекта.
+        Получить форматированное описание проекта для раздела 5 ГПЗУ.
         
         Формат:
-        "{Вид_проекта} "{Наименование_проекта}", утвержденного распоряжением 
-        от {Дата_распоряжения} № {Номер_распоряжения}"
+        "распоряжение администрации города Новокузнецка от {Дата} № {Номер}"
         
-        Или "Документация по планировке территории не утверждена" если проект не найден.
+        Returns:
+            Форматированная строка или "Документация по планировке территории не утверждена"
         """
         if not self.exists:
             return "Документация по планировке территории не утверждена"
         
-        parts = []
+        parts = ["распоряжение администрации города Новокузнецка"]
         
-        # Вид проекта
-        if self.project_type:
-            parts.append(self.project_type.capitalize())
-        
-        # Наименование в кавычках
-        if self.project_name:
-            parts.append(f'"{self.project_name}"')
-        
-        # Если есть хоть что-то из вида/названия, добавляем "утвержденного"
-        if parts:
-            parts.append("утвержденного")
-        
-        # Распоряжение
-        decision_parts = []
-        if self.decision_authority:
-            decision_parts.append(self.decision_authority)
-        else:
-            decision_parts.append("распоряжением")
-        
+        # Дата распоряжения
         if self.decision_date:
-            # Форматируем дату
             try:
-                date_str = str(self.decision_date).split()[0]  # Берём только дату без времени
+                from datetime import datetime
+                date_str = str(self.decision_date).split()[0]
                 
-                # Пробуем разные форматы
-                for fmt in ["%Y-%m-%d", "%d.%m.%Y"]:
+                dt = None
+                for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"]:
                     try:
                         dt = datetime.strptime(date_str, fmt)
-                        formatted_date = dt.strftime("%d.%m.%Y")
-                        decision_parts.append(f"от {formatted_date}")
                         break
-                    except:
+                    except ValueError:
                         continue
+                
+                if dt:
+                    formatted_date = dt.strftime("%d.%m.%Y")
+                    parts.append(f"от {formatted_date}")
                 else:
-                    # Если не удалось распарсить, используем как есть
-                    decision_parts.append(f"от {self.decision_date}")
-            except:
-                decision_parts.append(f"от {self.decision_date}")
+                    parts.append(f"от {date_str}")
+            except Exception:
+                parts.append(f"от {self.decision_date}")
         
+        # Номер распоряжения
         if self.decision_number:
-            decision_parts.append(f"№ {self.decision_number}")
+            parts.append(f"№ {self.decision_number}")
         
-        if decision_parts:
-            parts.append(" ".join(decision_parts))
-        
-        if parts:
-            return " ".join(parts)
-        else:
-            return "Документация по планировке территории не утверждена"
+        return " ".join(parts)
 
 
 @dataclass
@@ -324,12 +302,52 @@ class GPData:
         lines.append("📋 ПРОЕКТ ПЛАНИРОВКИ:")
         if self.planning_project.exists:
             lines.append(f"  Участок входит в границы ППТ")
+            
+            # Показываем вид проекта
             if self.planning_project.project_type:
                 lines.append(f"  Вид: {self.planning_project.project_type}")
+            
+            # Показываем название проекта
+            if self.planning_project.project_name:
+                name = self.planning_project.project_name
+                # Если название слишком длинное, обрезаем
+                if len(name) > 100:
+                    name = name[:97] + "..."
+                lines.append(f'  Название: "{name}"')
+            
+            # Показываем номер и дату распоряжения
+            decision_parts = []
+            if self.planning_project.decision_date:
+                # Форматируем дату для вывода
+                try:
+                    from datetime import datetime
+                    date_str = str(self.planning_project.decision_date).split()[0]
+                    dt = None
+                    for fmt in ["%Y-%m-%d", "%d.%m.%Y"]:
+                        try:
+                            dt = datetime.strptime(date_str, fmt)
+                            break
+                        except ValueError:
+                            continue
+                    if dt:
+                        decision_parts.append(f"от {dt.strftime('%d.%m.%Y')}")
+                    else:
+                        decision_parts.append(f"от {self.planning_project.decision_date}")
+                except:
+                    decision_parts.append(f"от {self.planning_project.decision_date}")
+            
+            if self.planning_project.decision_number:
+                decision_parts.append(f"№ {self.planning_project.decision_number}")
+            
+            if decision_parts:
+                lines.append(f"  Распоряжение: {' '.join(decision_parts)}")
+            
+            # Для документа используется краткий формат
             if self.planning_project.decision_full:
-                lines.append(f"  {self.planning_project.decision_full}")
+                lines.append(f"  Для документа: {self.planning_project.decision_full}")
         else:
-            lines.append("  Не входит в границы ППТ")
+            # ИСПРАВЛЕНО: Если ППТ нет, выводим стандартную фразу
+            lines.append(f"  Документация по планировке территории не утверждена")
         lines.append("")
         
         restrictions_count = len(self.get_all_restrictions())

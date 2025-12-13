@@ -328,6 +328,12 @@ def parse_planning_projects_layer(tab_path: Path | str) -> List[Dict[str, Any]]:
     """
     Парсинг слоя проектов планировки территории.
     
+    Использует точные названия колонок из TAB-файла:
+    - Вид_проекта
+    - Наименование_проекта  
+    - Номер_распоряжения
+    - Дата_распоряжения
+    
     Args:
         tab_path: Путь к TAB-файлу
     
@@ -340,21 +346,14 @@ def parse_planning_projects_layer(tab_path: Path | str) -> List[Dict[str, Any]]:
     
     projects = []
     
-    # Определяем названия полей (с учётом возможных вариантов)
-    PROJECT_TYPE_FIELDS = ["Вид_проекта", "PROJECT_TYPE", "ВидПроекта", "Вид", "TYPE"]
-    PROJECT_NAME_FIELDS = ["Наименование_проекта", "PROJECT_NAME", "NAME", "Наименование", "НАИМЕНОВАНИЕ"]
-    DECISION_NUMBER_FIELDS = ["Номер_распоряжения", "DECISION_NUMBER", "DEC_NUM", "НомерРешения", "Номер_решения", "НОМЕР_РЕШЕНИЯ", "Номер"]
-    DECISION_DATE_FIELDS = ["Дата_распоряжения", "DECISION_DATE", "DEC_DATE", "ДатаРешения", "Дата_решения", "ДАТА_РЕШЕНИЯ", "Дата"]
-    DECISION_AUTHORITY_FIELDS = ["DECISION_AUTHORITY", "AUTHORITY", "ОрганУтвердивший", "Орган", "ОРГАН"]
-    
     for idx, row in gdf.iterrows():
         project = {
-            "project_type": get_field_value(row, PROJECT_TYPE_FIELDS),
-            "project_name": get_field_value(row, PROJECT_NAME_FIELDS),
-            "decision_number": get_field_value(row, DECISION_NUMBER_FIELDS),
-            "decision_date": get_field_value(row, DECISION_DATE_FIELDS),
-            "decision_authority": get_field_value(row, DECISION_AUTHORITY_FIELDS),
-            "geometry": row.get('geometry'),
+            "project_type": row.get("Вид_проекта"),
+            "project_name": row.get("Наименование_проекта"),
+            "decision_number": row.get("Номер_распоряжения"),
+            "decision_date": row.get("Дата_распоряжения"),
+            "decision_authority": None,  # Этого поля нет в TAB
+            "geometry": row.get("geometry"),
         }
         projects.append(project)
     

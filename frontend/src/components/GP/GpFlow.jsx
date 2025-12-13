@@ -443,6 +443,41 @@ const GpFlow = () => {
                 )}
               </Card>
 
+              {/* НОВОЕ: ПРОЕКТ ПЛАНИРОВКИ */}
+              <Card title="📋 Проект планировки территории" size="small" style={{ marginBottom: 16 }}>
+                {spatialData.planning_project?.exists ? (
+                  <Descriptions column={1} size="small" bordered>
+                    {spatialData.planning_project.project_type && (
+                      <Descriptions.Item label="Вид">
+                        {spatialData.planning_project.project_type}
+                      </Descriptions.Item>
+                    )}
+                    {spatialData.planning_project.project_name && (
+                      <Descriptions.Item label="Название">
+                        {spatialData.planning_project.project_name}
+                      </Descriptions.Item>
+                    )}
+                    {(spatialData.planning_project.decision_date || spatialData.planning_project.decision_number) && (
+                      <Descriptions.Item label="Распоряжение">
+                        {spatialData.planning_project.decision_date && `от ${spatialData.planning_project.decision_date} `}
+                        {spatialData.planning_project.decision_number && `№ ${spatialData.planning_project.decision_number}`}
+                      </Descriptions.Item>
+                    )}
+                    {spatialData.planning_project.decision_full && (
+                      <Descriptions.Item label="Для документа">
+                        <span style={{ fontSize: '0.9em', color: '#595959' }}>
+                          {spatialData.planning_project.decision_full}
+                        </span>
+                      </Descriptions.Item>
+                    )}
+                  </Descriptions>
+                ) : (
+                  <p style={{ color: '#8c8c8c', fontStyle: 'italic' }}>
+                    Документация по планировке территории не утверждена
+                  </p>
+                )}
+              </Card>
+
               <Card title="🏗️ Объекты капитального строительства" size="small" style={{ marginBottom: 16 }}>
                 {spatialData.capital_objects?.length > 0 ? (
                   <Table 

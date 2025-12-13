@@ -4,6 +4,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Dict, Any
+from datetime import datetime
 
 from generator.gp_builder import GPBuilder
 from models.gp_data import GPData, ParcelInfo
@@ -43,7 +44,9 @@ async def generate_gradplan(request: Request):
         # Формируем имя файла
         app_number = data["application"].get("number", "UNKNOWN").replace("/", "-")
         cadnum = data["parcel"].get("cadnum", "UNKNOWN").replace(":", "-")
-        output_filename = f"GPZU_{app_number}_{cadnum}.docx"
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"GPZU_{app_number}_{cadnum}_{timestamp}.docx"
         output_path = UPLOADS_DIR / output_filename
         
         # Генерация документа
@@ -68,16 +71,22 @@ async def generate_gradplan(request: Request):
 async def download_gradplan(filename: str):
     """
     Скачивание сгенерированного градплана.
+    ИСПРАВЛЕНО: добавлен правильный Content-Disposition заголовок
     """
     file_path = UPLOADS_DIR / filename
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Файл не найден")
     
+    # ИСПРАВЛЕНИЕ: добавляем правильные заголовки
     return FileResponse(
         path=str(file_path),
         filename=filename,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache"
+        }
     )
 
 
