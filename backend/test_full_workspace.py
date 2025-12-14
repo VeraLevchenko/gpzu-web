@@ -119,6 +119,10 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
     print(f"✅ Директория: {workspace_dir}")
     print()
     
+    #!/usr/bin/env python3
+# ФРАГМЕНТ ДЛЯ ЗАМЕНЫ В test_full_workspace.py
+# Скопируйте этот блок вместо старого (примерно строки 140-185)
+
     # ========== ШАГ 4: Генерация MIF/MID файлов ========== #
     
     print("ШАГ 4: Генерация MIF/MID файлов")
@@ -148,14 +152,47 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
     else:
         print(f"⊘  ОКС пропущены (нет данных или геометрии)")
     
-    # 4.5 ЗОУИТ (может вернуть None если нет геометрии)
+    # 4.5 ЗОУИТ - каждая зона в отдельном слое ✨ ОБНОВЛЕНО
     result_zouit = create_zouit_mif(workspace.zouit, workspace_dir)
     if result_zouit:
-        mif5, mid5 = result_zouit
-        print(f"✅ {mif5.name} и {mid5.name} ({len(workspace.zouit)} зон)")
+        print(f"✅ Создано отдельных слоёв ЗОУИТ: {len(result_zouit)}")
+        for i, (mif, mid) in enumerate(result_zouit, start=1):
+            # Показываем первые 3 слоя для краткости
+            if i <= 3:
+                print(f"   {i}. {mif.name}")
+        if len(result_zouit) > 3:
+            print(f"   ... и ещё {len(result_zouit) - 3} слоёв")
     else:
         print(f"⊘  ЗОУИТ пропущены (нет данных или геометрии)")
     
+    print()
+    
+    # ========== ШАГ 5: Конвертация MIF → TAB ========== #
+    
+    print("ШАГ 5: Конвертация MIF → TAB")
+    print("-" * 80)
+    
+    tab_files = convert_all_mif_to_tab(workspace_dir, remove_mif=True, method='auto')
+    print(f"✅ Конвертировано: {len(tab_files)} файлов")
+    for tab in sorted(tab_files):
+        print(f"   {tab.name}")
+    print()
+    
+    # ========== ШАГ 6: Создание WOR-файла ========== #
+    
+    print("ШАГ 6: Создание WOR-файла (рабочий набор)")
+    print("-" * 80)
+    
+    # ✨ ОБНОВЛЕНО: Передаем список файлов ЗОУИТ
+    has_oks = result_oks is not None
+    
+    wor_path = create_workspace_wor(
+        workspace_dir=workspace_dir,
+        cadnum=workspace.parcel.cadnum,
+        has_oks=has_oks,
+        zouit_files=result_zouit  # ✅ Вместо has_zouit
+    )
+    print(f"✅ {wor_path.name} создан")
     print()
     
     # ========== ШАГ 5: Конвертация MIF → TAB ========== #
@@ -224,7 +261,7 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
 
 if __name__ == "__main__":
     # Тестовый файл ЕГРН
-    test_file = "/home/gpzu-web/backend/uploads/магазин лесная 14.xml"
+    test_file = "/home/verasheregesh/projects/gpzu-web/backend/uploads/магазин лесная 14.xml"
     
     # Можно передать путь как аргумент
     if len(sys.argv) > 1:

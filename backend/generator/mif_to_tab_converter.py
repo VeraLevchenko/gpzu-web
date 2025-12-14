@@ -2,12 +2,14 @@
 """
 Конвертер MIF/MID файлов в TAB формат MapInfo.
 
+ИСПРАВЛЕНО: Добавлена явная установка кодировки при конвертации через GDAL.
+
 MIF (MapInfo Interchange Format) - текстовый формат, легко создаётся
 TAB (MapInfo Native Format) - бинарный формат, требуется для WOR
 
 Workflow:
 1. Создаём MIF/MID с правильной системой координат
-2. Конвертируем MIF → TAB используя GDAL/OGR
+2. Конвертируем MIF → TAB используя GDAL/OGR с явной кодировкой CP1251
 3. Удаляем MIF/MID (опционально)
 4. Используем TAB в WOR-файле
 """
@@ -18,12 +20,13 @@ from typing import List, Optional, Tuple
 import logging
 import subprocess
 import shutil
+import os
 
 logger = logging.getLogger(__name__)
 
 try:
     import geopandas as gpd
-    from osgeo import ogr, osr
+    from osgeo import ogr, osr, gdal
     GDAL_AVAILABLE = True
 except ImportError:
     GDAL_AVAILABLE = False
@@ -39,6 +42,8 @@ def convert_mif_to_tab_gdal(
 ) -> Path:
     """
     Конвертировать MIF в TAB используя GDAL/OGR напрямую.
+    
+    ИСПРАВЛЕНО: Добавлена явная установка кодировки CP1251 для русских символов.
     
     Args:
         mif_path: Путь к MIF файлу
@@ -62,29 +67,158 @@ def convert_mif_to_tab_gdal(
     logger.info(f"Конвертация MIF→TAB (GDAL): {mif_path.name} → {output_tab_path.name}")
     
     try:
-        # Открываем MIF
-        mif_ds = ogr.Open(str(mif_path))
-        if mif_ds is None:
-            raise ValueError(f"Не удалось открыть MIF: {mif_path}")
+        # ✅ ИСПРАВЛЕНИЕ: Устанавливаем переменные окружения для правильной кодировки
+        # SHAPE_ENCODING указывает GDAL использовать CP1251 для атрибутов
+        old_shape_encoding = os.environ.get('SHAPE_ENCODING')
+        os.environ['SHAPE_ENCODING'] = 'CP1251'
         
-        # Создаём TAB драйвер
-        tab_driver = ogr.GetDriverByName('MapInfo File')
-        if tab_driver is None:
-            raise ValueError("MapInfo File драйвер не найден в GDAL")
+        # GDAL_DATA может быть необходим для правильной работы драйвера
+        # Включаем опции GDAL для детального логирования
+        gdal.SetConfigOption('CPL_DEBUG', 'ON')
+        gdal.SetConfigOption('MITAB_BOUNDS_FILE', '')  # Отключаем файл границ
         
-        # Удаляем существующий TAB если есть
+        try:
+            # Открываем MIF с явным указанием кодировки
+            # GDAL автоматически определит кодировку из заголовка MIF (Charset "WindowsCyrillic")
+            mif_ds = ogr.Open(str(mif_path), update=False)
+            if mif_ds is None:
+                raise ValueError(f"Не удалось открыть MIF: {mif_path}")
+            
+            logger.info(f"MIF открыт, слоёв: {mif_ds.GetLayerCount()}")
+            
+            # Получаем информацию о слое для логирования
+            layer = mif_ds.GetLayer(0)
+            if layer:
+                logger.info(f"Записей в слое: {layer.GetFeatureCount()}")
+                layer_defn = layer.GetLayerDefn()
+                logger.info(f"Полей в слое: {layer_defn.GetFieldCount()}")
+                for i in range(layer_defn.GetFieldCount()):
+                    field_defn = layer_defn.GetFieldDefn(i)
+                    logger.info(f"  Поле {i}: {field_defn.GetName()} ({field_defn.GetTypeName()})")
+            
+            # Создаём TAB драйвер
+            tab_driver = ogr.GetDriverByName('MapInfo File')
+            if tab_driver is None:
+                raise ValueError("MapInfo File драйвер не найден в GDAL")
+            
+            # Удаляем существующий TAB если есть
+            if output_tab_path.exists():
+                logger.info(f"Удаление существующего TAB: {output_tab_path}")
+                tab_driver.DeleteDataSource(str(output_tab_path))
+            
+            # ✅ ИСПРАВЛЕНИЕ: Копируем MIF в TAB с опциями кодировки
+            # Опция FORMAT=MIF указывает, что источник - MIF файл
+            # Опция ENCODING=CP1251 явно задает кодировку для TAB
+            copy_options = [
+                'ENCODING=CP1251',  # Явная кодировка для TAB
+                'FORMAT=MIF'        # Формат источника
+            ]
+            
+            tab_ds = tab_driver.CopyDataSource(
+                mif_ds, 
+                str(output_tab_path),
+                options=copy_options
+            )
+            
+            if tab_ds is None:
+                raise ValueError("Не удалось создать TAB файл")
+            
+            # Проверяем что TAB создан корректно
+            tab_layer = tab_ds.GetLayer(0)
+            if tab_layer:
+                logger.info(f"TAB создан, записей: {tab_layer.GetFeatureCount()}")
+            
+            # Закрываем датасеты
+            mif_ds = None
+            tab_ds = None
+            
+            logger.info(f"✅ TAB создан: {output_tab_path}")
+            
+            # Удаляем MIF если требуется
+            if remove_mif:
+                _remove_mif_files(mif_path)
+            
+            return output_tab_path
+            
+        finally:
+            # Восстанавливаем переменные окружения
+            if old_shape_encoding is not None:
+                os.environ['SHAPE_ENCODING'] = old_shape_encoding
+            else:
+                os.environ.pop('SHAPE_ENCODING', None)
+            
+            # Отключаем детальное логирование
+            gdal.SetConfigOption('CPL_DEBUG', 'OFF')
+        
+    except Exception as e:
+        logger.error(f"Ошибка конвертации MIF→TAB: {e}")
+        raise
+
+
+def convert_mif_to_tab_subprocess(
+    mif_path: Path,
+    output_tab_path: Optional[Path] = None,
+    remove_mif: bool = False
+) -> Path:
+    """
+    Конвертировать MIF в TAB используя ogr2ogr command-line утилиту.
+    
+    ИСПРАВЛЕНО: Добавлены опции для правильной обработки кодировки.
+    
+    Требуется установленный GDAL в системе.
+    
+    Args:
+        mif_path: Путь к MIF файлу
+        output_tab_path: Путь для TAB
+        remove_mif: Удалить MIF после конвертации
+    
+    Returns:
+        Path к созданному TAB файлу
+    """
+    
+    mif_path = Path(mif_path)
+    
+    if output_tab_path is None:
+        output_tab_path = mif_path.with_suffix('.tab')
+    else:
+        output_tab_path = Path(output_tab_path)
+    
+    logger.info(f"Конвертация MIF→TAB (ogr2ogr): {mif_path.name}")
+    
+    try:
+        # Удаляем существующий TAB
         if output_tab_path.exists():
-            tab_driver.DeleteDataSource(str(output_tab_path))
+            _remove_tab_files(output_tab_path)
         
-        # Копируем MIF в TAB
-        tab_ds = tab_driver.CopyDataSource(mif_ds, str(output_tab_path))
+        # ✅ ИСПРАВЛЕНИЕ: Команда ogr2ogr с опциями кодировки
+        cmd = [
+            'ogr2ogr',
+            '-f', 'MapInfo File',
+            '-lco', 'ENCODING=CP1251',  # Layer Creation Option - кодировка
+            str(output_tab_path),
+            str(mif_path)
+        ]
         
-        if tab_ds is None:
-            raise ValueError("Не удалось создать TAB файл")
+        # Устанавливаем переменные окружения для ogr2ogr
+        env = os.environ.copy()
+        env['SHAPE_ENCODING'] = 'CP1251'
         
-        # Закрываем датасеты
-        mif_ds = None
-        tab_ds = None
+        logger.info(f"Выполнение команды: {' '.join(cmd)}")
+        
+        # Выполняем команду
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env  # Передаём переменные окружения
+        )
+        
+        if result.stdout:
+            logger.debug(f"ogr2ogr stdout: {result.stdout}")
+        
+        if not output_tab_path.exists():
+            raise ValueError(f"TAB файл не создан: {output_tab_path}")
         
         logger.info(f"✅ TAB создан: {output_tab_path}")
         
@@ -94,8 +228,11 @@ def convert_mif_to_tab_gdal(
         
         return output_tab_path
         
-    except Exception as e:
-        logger.error(f"Ошибка конвертации MIF→TAB: {e}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Ошибка ogr2ogr: {e.stderr}")
+        raise
+    except FileNotFoundError:
+        logger.error("ogr2ogr не найден! Установите GDAL.")
         raise
 
 
@@ -146,74 +283,6 @@ def convert_mif_to_tab_geopandas(
         
     except Exception as e:
         logger.error(f"Ошибка конвертации MIF→TAB (geopandas): {e}")
-        raise
-
-
-def convert_mif_to_tab_subprocess(
-    mif_path: Path,
-    output_tab_path: Optional[Path] = None,
-    remove_mif: bool = False
-) -> Path:
-    """
-    Конвертировать MIF в TAB используя ogr2ogr command-line утилиту.
-    
-    Требуется установленный GDAL в системе.
-    
-    Args:
-        mif_path: Путь к MIF файлу
-        output_tab_path: Путь для TAB
-        remove_mif: Удалить MIF после конвертации
-    
-    Returns:
-        Path к созданному TAB файлу
-    """
-    
-    mif_path = Path(mif_path)
-    
-    if output_tab_path is None:
-        output_tab_path = mif_path.with_suffix('.tab')
-    else:
-        output_tab_path = Path(output_tab_path)
-    
-    logger.info(f"Конвертация MIF→TAB (ogr2ogr): {mif_path.name}")
-    
-    try:
-        # Удаляем существующий TAB
-        if output_tab_path.exists():
-            _remove_tab_files(output_tab_path)
-        
-        # Команда ogr2ogr
-        cmd = [
-            'ogr2ogr',
-            '-f', 'MapInfo File',
-            str(output_tab_path),
-            str(mif_path)
-        ]
-        
-        # Выполняем команду
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        
-        if not output_tab_path.exists():
-            raise ValueError(f"TAB файл не создан: {output_tab_path}")
-        
-        logger.info(f"✅ TAB создан: {output_tab_path}")
-        
-        # Удаляем MIF если требуется
-        if remove_mif:
-            _remove_mif_files(mif_path)
-        
-        return output_tab_path
-        
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Ошибка ogr2ogr: {e.stderr}")
-        raise
-    except FileNotFoundError:
-        logger.error("ogr2ogr не найден! Установите GDAL.")
         raise
 
 
@@ -353,13 +422,13 @@ if __name__ == "__main__":
     import tempfile
     
     print("=" * 60)
-    print("ТЕСТ: Конвертация MIF → TAB")
+    print("ТЕСТ: Конвертация MIF → TAB с правильной кодировкой")
     print("=" * 60)
     
     # Создаём тестовую директорию
     test_dir = Path(tempfile.mkdtemp())
     
-    # Создаём тестовый MIF (пустышка)
+    # Создаём тестовый MIF с русскими символами
     test_mif = test_dir / "test.MIF"
     test_mid = test_dir / "test.MID"
     
@@ -367,8 +436,9 @@ if __name__ == "__main__":
         f.write('''Version 450
 Charset "WindowsCyrillic"
 CoordSys Earth Projection 8, 1001, "m", 88.46666666666, 0, 1, 2300000, -5512900.5719999997
-Columns 1
+Columns 2
   Name Char(50)
+  Description Char(100)
 Data
 
 Point 2220706.74 449672.33
@@ -376,9 +446,12 @@ Point 2220706.74 449672.33
 ''')
     
     with open(test_mid, 'w', encoding='cp1251') as f:
-        f.write('"Test Point"\n')
+        f.write('"Тестовая точка","Проверка русских символов"\n')
     
     print(f"Создан тестовый MIF: {test_mif}")
+    print(f"Содержимое MID (должно быть с русскими символами):")
+    with open(test_mid, 'r', encoding='cp1251') as f:
+        print(f"  {f.read().strip()}")
     
     # Конвертация
     try:
@@ -390,8 +463,24 @@ Point 2220706.74 449672.33
         print(f"\nФайлы TAB в директории: {len(tab_files)}")
         for f in tab_files:
             print(f"  - {f.name}")
+        
+        # Пробуем прочитать созданный TAB для проверки кодировки
+        if GDAL_AVAILABLE:
+            print("\nПроверка содержимого TAB:")
+            ds = ogr.Open(str(tab_file))
+            if ds:
+                layer = ds.GetLayer(0)
+                feature = layer.GetNextFeature()
+                if feature:
+                    name = feature.GetField('Name')
+                    desc = feature.GetField('Description')
+                    print(f"  Name: {name}")
+                    print(f"  Description: {desc}")
+                ds = None
     
     except Exception as e:
         print(f"\n❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
     
     print("\n" + "=" * 60)

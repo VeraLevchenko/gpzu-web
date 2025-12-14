@@ -17,16 +17,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# ЗАМЕНИТЕ ФУНКЦИЮ create_workspace_wor в backend/generator/wor_builder.py
+
 def create_workspace_wor(
     workspace_dir: Path,
     cadnum: str,
     has_oks: bool = False,
-    has_zouit: bool = False,
+    zouit_files: Optional[List[Tuple[Path, Path]]] = None,  # ✅ ИЗМЕНЕНО
     red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
     use_absolute_paths: bool = False
 ) -> Path:
     """
     Создать WOR-файл рабочего набора.
+    
+    ✨ ОБНОВЛЕНО: Поддержка отдельных слоёв для каждой ЗОУИТ.
     
     Рабочий набор содержит:
     - Map Window с открытыми слоями
@@ -36,7 +40,7 @@ def create_workspace_wor(
         workspace_dir: Директория со слоями MIF/MID
         cadnum: Кадастровый номер участка
         has_oks: Есть ли слой ОКС
-        has_zouit: Есть ли слой ЗОУИТ
+        zouit_files: Список файлов ЗОУИТ [(mif, mid), ...] или None  # ✅ ИЗМЕНЕНО
         red_lines_path: Путь к слою красных линий
         use_absolute_paths: Использовать абсолютные пути к MIF файлам
     
@@ -53,14 +57,16 @@ def create_workspace_wor(
     map_layers = ["участок", "участок_точки", "зона_строительства"]
     if has_oks:
         map_layers.append("окс")
-    if has_zouit:
-        map_layers.append("зоуит")
+    
+    # ✅ ОБНОВЛЕНО: Добавляем каждый слой ЗОУИТ
+    if zouit_files:
+        for i, (mif_path, _) in enumerate(zouit_files, start=1):
+            layer_name = mif_path.stem  # Имя без расширения
+            map_layers.append(layer_name)
     
     map_from_str = ",".join(map_layers)
     
     # ========== Создание WOR-файла ========== #
-    
-    # Формат WOR точно как создаёт MapInfo Professional (без пустых строк!)
     
     wor_content = '''!Workspace
 !Version  950
@@ -73,8 +79,12 @@ Open Table "зона_строительства.MIF" As зона_строите�
     if has_oks:
         wor_content += 'Open Table "окс.MIF" As окс Interactive\n'
     
-    if has_zouit:
-        wor_content += 'Open Table "зоуит.MIF" As зоуит Interactive\n'
+    # ✅ ОБНОВЛЕНО: Открываем каждый файл ЗОУИТ отдельно
+    if zouit_files:
+        for i, (mif_path, _) in enumerate(zouit_files, start=1):
+            filename = mif_path.name
+            table_name = mif_path.stem
+            wor_content += f'Open Table "{filename}" As {table_name} Interactive\n'
     
     wor_content += f'''Map From {map_from_str} 
   Position (0.0520833,0.0520833) Units "in"
@@ -110,16 +120,15 @@ Undim WorkspaceMaximizedWindow
         
     
     logger.info(f"WOR-файл создан: {wor_path}")
-    logger.info(f"  Слоёв в рабочем наборе: 3+")
+    logger.info(f"  Слоёв в рабочем наборе: {len(map_layers)}")
     logger.info(f"  - Участок (полигон + точки)")
     logger.info(f"  - Зона строительства")
     if has_oks:
         logger.info(f"  - ОКС")
-    if has_zouit:
-        logger.info(f"  - ЗОУИТ")
+    if zouit_files:
+        logger.info(f"  - ЗОУИТ: {len(zouit_files)} отдельных слоёв")
     
     return wor_path
-
 
 def create_simple_wor(
     workspace_dir: Path,
