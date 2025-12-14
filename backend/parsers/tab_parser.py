@@ -315,6 +315,7 @@ def find_objects_on_parcel(coords: List[Tuple[float, float]], objects: List[Dict
                     "purpose": obj.get('purpose'),
                     "area": obj.get('area'),
                     "floors": obj.get('floors'),
+                    "geometry": obj.get('geometry'),
                 })
         
         return found

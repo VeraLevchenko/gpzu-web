@@ -102,6 +102,7 @@ class CapitalObject:
     area: Optional[str] = None
     floors: Optional[str] = None
     year_built: Optional[str] = None
+    geometry: Optional[Any] = None  # ✅ ДОБАВЛЕНО: ПОЛНАЯ геометрия объекта
 
 
 @dataclass
@@ -174,6 +175,7 @@ class RestrictionZone:
     # 🔥 новые поля
     area_sqm: Optional[float] = None   # площадь пересечения, кв.м
     area: Optional[float] = None       # запасной вариант (для совместимости)
+    geometry: Optional[Any] = None     # ✅ ДОБАВЛЕНО: ПОЛНАЯ геометрия ЗОУИТ
     
     def get_full_name(self) -> str:
         """Получить полное название с реестровым номером"""

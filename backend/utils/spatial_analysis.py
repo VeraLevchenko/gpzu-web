@@ -227,6 +227,7 @@ def _analyze_capital_objects(gp_data: GPData, coords: List[Tuple[float, float]])
                 purpose=obj_dict.get('purpose'),
                 area=obj_dict.get('area'),
                 floors=obj_dict.get('floors'),
+                geometry=obj_dict.get('geometry'),  # ✅ ПОЛНАЯ геометрия ОКС из слоя
             )
             gp_data.capital_objects.append(cap_obj)
         
@@ -404,7 +405,7 @@ def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
                     logger.debug(f"Игнорируем ЗОУИТ {restr.get('name', 'Unknown')} - площадь пересечения слишком мала: {intersection_area:.3f} кв.м")
                     continue
                 
-                # Создаём ограничение с площадью
+                # Создаём ограничение с площадью И ПОЛНОЙ ГЕОМЕТРИЕЙ
                 restriction = RestrictionZone(
                     zone_type=restr.get('zone_type', "ЗОУИТ"),
                     name=restr.get('name'),
@@ -412,7 +413,8 @@ def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
                     decision_number=restr.get('decision_number'),
                     decision_date=restr.get('decision_date'),
                     decision_authority=restr.get('decision_authority'),
-                    area_sqm=intersection_area  # 🔥 РЕАЛЬНАЯ ПЛОЩАДЬ ПЕРЕСЕЧЕНИЯ
+                    area_sqm=intersection_area,  # 🔥 РЕАЛЬНАЯ ПЛОЩАДЬ ПЕРЕСЕЧЕНИЯ
+                    geometry=restr_geom           # ✅ ПОЛНАЯ геометрия ЗОУИТ (для карты!)
                 )
                 
                 gp_data.zouit.append(restriction)

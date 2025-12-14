@@ -51,6 +51,37 @@ def escape_mif_string(s: str) -> str:
     return f'"{s}"'
 
 
+def safe_encode_cp1251(s: str) -> str:
+    """
+    Безопасно подготовить строку для записи в CP1251.
+    
+    Проблема: Python получает строки в UTF-8 из spatial_analysis.py,
+    и при записи в файл с encoding='cp1251' может происходить 
+    некорректная конвертация символов.
+    
+    Решение: Явно конвертируем UTF-8 → CP1251, заменяя несовместимые символы.
+    
+    Args:
+        s: Исходная строка (может быть в UTF-8)
+    
+    Returns:
+        Строка, готовая для записи в файл с encoding='cp1251'
+    """
+    if s is None or s == '':
+        return ''
+    
+    try:
+        # Пробуем закодировать в CP1251
+        # errors='replace' заменит несовместимые символы на '?'
+        encoded = str(s).encode('cp1251', errors='replace')
+        # Декодируем обратно для записи в файл
+        return encoded.decode('cp1251')
+    except Exception as e:
+        logger.warning(f"Ошибка кодировки строки '{s[:50]}...': {e}")
+        # Если не получилось, возвращаем ASCII-совместимую версию
+        return str(s).encode('ascii', errors='replace').decode('ascii')
+
+
 def format_mif_number(n: Optional[float]) -> str:
     """Форматировать число для MIF/MID."""
     if n is None:
@@ -116,8 +147,13 @@ def create_parcel_mif(
     # ========== Создание MID ========== #
     
     with open(mid_path, 'w', encoding='cp1251') as f:
-        cadnum = escape_mif_string(parcel_data.cadnum)
-        address = escape_mif_string(parcel_data.address or "")
+        # Безопасная конвертация в CP1251
+        cadnum_safe = safe_encode_cp1251(parcel_data.cadnum)
+        address_safe = safe_encode_cp1251(parcel_data.address or "")
+        
+        # Экранирование
+        cadnum = escape_mif_string(cadnum_safe)
+        address = escape_mif_string(address_safe)
         area = format_mif_number(parcel_data.area)
         
         f.write(f'{cadnum},{address},{area}\n')
@@ -180,7 +216,8 @@ def create_parcel_points_mif(
     # ========== Создание MID ========== #
     
     with open(mid_path, 'w', encoding='cp1251') as f:
-        cadnum = escape_mif_string(parcel_data.cadnum)
+        cadnum_safe = safe_encode_cp1251(parcel_data.cadnum)
+        cadnum = escape_mif_string(cadnum_safe)
         
         for i in range(len(coords)):
             num = escape_mif_string(str(i + 1))
@@ -263,8 +300,13 @@ def create_building_zone_mif(
     # ========== Создание MID ========== #
     
     with open(mid_path, 'w', encoding='cp1251') as f:
-        cadnum_str = escape_mif_string(cadnum)
-        desc = escape_mif_string("Минимальные отступы от границ ЗУ")
+        # Безопасная конвертация
+        cadnum_safe = safe_encode_cp1251(cadnum)
+        desc_safe = safe_encode_cp1251("Минимальные отступы от границ ЗУ")
+        
+        # Экранирование
+        cadnum_str = escape_mif_string(cadnum_safe)
+        desc = escape_mif_string(desc_safe)
         area = format_mif_number(building_zone_data.geometry.area)
         
         f.write(f'{cadnum_str},{desc},{area}\n')
@@ -356,9 +398,17 @@ def create_oks_mif(
     with open(mid_path, 'w', encoding='cp1251') as f:
         for i, obj in enumerate(valid_objects, start=1):
             num = str(i)
-            cadnum = escape_mif_string(obj.cadnum or "")
-            obj_type = escape_mif_string(obj.object_type or "")
-            purpose = escape_mif_string(obj.purpose or "")
+            
+            # Безопасная конвертация в CP1251
+            cadnum_safe = safe_encode_cp1251(obj.cadnum or "")
+            type_safe = safe_encode_cp1251(obj.object_type or "")
+            purpose_safe = safe_encode_cp1251(obj.purpose or "")
+            
+            # Экранирование
+            cadnum = escape_mif_string(cadnum_safe)
+            obj_type = escape_mif_string(type_safe)
+            purpose = escape_mif_string(purpose_safe)
+            
             area = format_mif_number(obj.area)
             floors = str(obj.floors) if obj.floors else "0"
             
@@ -441,9 +491,15 @@ def create_zouit_mif(
     
     with open(mid_path, 'w', encoding='cp1251') as f:
         for zone in valid_zones:
-            name = escape_mif_string(zone.name or "")
-            ztype = escape_mif_string(zone.type or "")
-            restriction = escape_mif_string(zone.restriction or "")
+            # ✅ ИСПРАВЛЕНИЕ: Безопасная конвертация UTF-8 → CP1251
+            name_safe = safe_encode_cp1251(zone.name or "")
+            type_safe = safe_encode_cp1251(zone.type or "")
+            restriction_safe = safe_encode_cp1251(zone.restriction or "")
+            
+            # Экранирование для MIF
+            name = escape_mif_string(name_safe)
+            ztype = escape_mif_string(type_safe)
+            restriction = escape_mif_string(restriction_safe)
             
             f.write(f'{name},{ztype},{restriction}\n')
     
