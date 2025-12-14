@@ -106,19 +106,14 @@ def convert_mif_to_tab_gdal(
                 logger.info(f"Удаление существующего TAB: {output_tab_path}")
                 tab_driver.DeleteDataSource(str(output_tab_path))
             
-            # ✅ ИСПРАВЛЕНИЕ: Копируем MIF в TAB с опциями кодировки
-            # Опция FORMAT=MIF указывает, что источник - MIF файл
-            # Опция ENCODING=CP1251 явно задает кодировку для TAB
-            copy_options = [
-                'ENCODING=CP1251',  # Явная кодировка для TAB
-                'FORMAT=MIF'        # Формат источника
-            ]
+            # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Копируем MIF в TAB с правильными опциями
+            # ВАЖНО: Не используем copy_options при CopyDataSource - они не работают!
+            # Вместо этого устанавливаем конфигурацию GDAL перед копированием
             
-            tab_ds = tab_driver.CopyDataSource(
-                mif_ds, 
-                str(output_tab_path),
-                options=copy_options
-            )
+            # Устанавливаем формат для чтения
+            gdal.SetConfigOption('MITAB_ENCODING', 'CP1251')
+            
+            tab_ds = tab_driver.CopyDataSource(mif_ds, str(output_tab_path))
             
             if tab_ds is None:
                 raise ValueError("Не удалось создать TAB файл")
