@@ -217,17 +217,22 @@ def _convert_zouit(
         # Извлекаем геометрию (после патча она уже есть в RestrictionZone)
         geometry = getattr(zone, 'geometry', None)
         
+        # ✅ ОБНОВЛЕНО: Добавлено получение реестрового номера
+        registry_number = getattr(zone, 'registry_number', None)
+        
         zouit_obj = ZouitInfo(
             name=getattr(zone, 'name', None),
             type=getattr(zone, 'zone_type', None),
+            registry_number=registry_number,  # ✅ ДОБАВЛЕНО
             restriction=_format_restriction(zone),
-            geometry=geometry  # Геометрия пересечения с участком
+            geometry=geometry
         )
         
         result.append(zouit_obj)
         
         logger.debug(
             f"ЗОУИТ: {zouit_obj.name} ({zouit_obj.type}) - "
+            f"реестр: {registry_number or 'нет'} - "
             f"геометрия: {'✅' if geometry else '❌'}"
         )
     
@@ -290,7 +295,7 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # Путь к тестовой выписке ЕГРН
-    test_egrn_path = Path("/home/verasheregesh/projects/gpzu-web/backend/uploads/магазин лесная 14.xml")
+    test_egrn_path = Path("/home/gpzu-web/backend/uploads/магазин лесная 14.xml")
     
     if not test_egrn_path.exists():
         print(f"❌ Тестовый файл не найден: {test_egrn_path}")

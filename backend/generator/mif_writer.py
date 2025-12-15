@@ -17,6 +17,7 @@ from typing import List, Tuple, Optional, Dict, Any
 import logging
 import tempfile
 import shutil
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -338,13 +339,15 @@ def create_oks_mif(
 def create_zouit_mif(
     zouit_list: List[Any],
     output_dir: Path,
-    filename: str = "зоуит"  # Параметр игнорируется, оставлен для совместимости
+    filename: str = "зоуит"
 ) -> Optional[List[Tuple[Path, Path]]]:
     """
     Создать отдельные MIF/MID файлы для каждой ЗОУИТ.
     
-    ✨ НОВОЕ: Каждая зона создается в отдельном слое (файле).
-    ✨ БЕЗ заливки - только контур.
+    ✨ ОБНОВЛЕНО:
+    - Каждая зона создается в отдельном слое (файле)
+    - Добавлено поле "Реестровый_номер"
+    - БЕЗ заливки - только контур
     
     Args:
         zouit_list: Список объектов ZouitInfo
@@ -352,7 +355,7 @@ def create_zouit_mif(
         filename: Не используется (для совместимости)
     
     Returns:
-        Список кортежей (Path к MIF, Path к MID) для каждой зоны
+        Список кортежей [(Path к MIF, Path к MID), ...] для каждой зоны
         или None если зон нет
     """
     
@@ -376,16 +379,17 @@ def create_zouit_mif(
     # Создаем отдельный слой для каждой зоны
     for i, zone in enumerate(valid_zones, start=1):
         
-        # Формируем имя файла из типа зоны
-        # Убираем недопустимые символы для имени файла
+        # Формируем безопасное имя файла из типа зоны
         safe_name = zone.type or zone.name or f"зона_{i}"
+        
+        # Убираем недопустимые символы для имени файла
         safe_name = safe_name.replace("/", "_").replace("\\", "_")
         safe_name = safe_name.replace(":", "_").replace("*", "_")
         safe_name = safe_name.replace("?", "_").replace('"', "_")
         safe_name = safe_name.replace("<", "_").replace(">", "_")
         safe_name = safe_name.replace("|", "_").strip()
         
-        # Ограничиваем длину имени
+        # Ограничиваем длину имени файла
         if len(safe_name) > 40:
             safe_name = safe_name[:40]
         
@@ -406,10 +410,11 @@ def create_zouit_mif(
             w('Delimiter ","\n')
             w(f'{MSK42_COORDSYS}\n')
             
-            # Структура полей
-            w('Columns 3\n')
+            # ✅ ОБНОВЛЕНО: Добавлено поле Реестровый_номер
+            w('Columns 4\n')
             w('  Наименование Char(254)\n')
             w('  Тип Char(254)\n')
+            w('  Реестровый_номер Char(254)\n')
             w('  Ограничения Char(254)\n')
             w('Data\n\n')
             
@@ -424,9 +429,9 @@ def create_zouit_mif(
                 for x, y in coords:
                     w(f'{x} {y}\n')
                 
-                # ✨ БЕЗ ЗАЛИВКИ - только контур
-                w('    Pen (1,2,0)\n')  # Черная линия, ширина 2
-                w('    Brush (1,0,16777215)\n')  # Прозрачная заливка
+                # БЕЗ ЗАЛИВКИ - только контур
+                w('    Pen (1,2,0)\n')
+                w('    Brush (1,0,16777215)\n')
             
             w('\n')
         
@@ -438,12 +443,20 @@ def create_zouit_mif(
             type_safe = safe_encode_cp1251(zone.type or "")
             restriction_safe = safe_encode_cp1251(zone.restriction or "")
             
+            # ✅ НОВОЕ: Получаем реестровый номер из объекта zone
+            registry_number = ""
+            if hasattr(zone, 'registry_number') and zone.registry_number:
+                registry_number = zone.registry_number
+            registry_safe = safe_encode_cp1251(registry_number)
+            
             # Экранирование для MIF
             name = escape_mif_string(name_safe)
             ztype = escape_mif_string(type_safe)
+            registry = escape_mif_string(registry_safe)
             restriction = escape_mif_string(restriction_safe)
             
-            line = f'{name},{ztype},{restriction}\n'
+            # ✅ ОБНОВЛЕНО: Добавлен реестровый номер
+            line = f'{name},{ztype},{registry},{restriction}\n'
             f.write(line.encode('cp1251'))
         
         created_files.append((mif_path, mid_path))
@@ -457,17 +470,115 @@ def create_zouit_mif(
 # ================ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ================ #
 
 def create_workspace_directory(cadnum: str) -> Path:
-    """Создать временную рабочую директорию."""
-    from datetime import datetime
+    """
+    Создать рабочую директорию с правильной структурой.
     
-    safe_cadnum = cadnum.replace(":", "_").replace("/", "_")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dir_name = f"{safe_cadnum}_{timestamp}"
-    workspace_dir = TEMP_DIR / dir_name
-    workspace_dir.mkdir(parents=True, exist_ok=True)
+    ✨ ОБНОВЛЕНО: Новая структура папок
     
-    logger.info(f"Создана рабочая директория: {workspace_dir}")
-    return workspace_dir
+    Структура:
+    GP_Graphics_<cadnum>/
+    ├── README.txt                    # Инструкция для пользователя
+    ├── рабочий_набор.WOR            # Рабочий набор MapInfo
+    └── База_проекта/                # Подпапка со всеми слоями
+        ├── участок.TAB
+        ├── участок_точки.TAB
+        ├── зона_строительства.TAB
+        ├── окс.TAB
+        └── зоуит_*.TAB
+    
+    Args:
+        cadnum: Кадастровый номер участка
+    
+    Returns:
+        Path к созданной директории (корневая папка проекта)
+    """
+    
+    import tempfile
+    from pathlib import Path
+    
+    # Формируем имя папки: GP_Graphics_42:30:0102050:255
+    safe_cadnum = cadnum.replace(':', '_')
+    dir_name = f"GP_Graphics_{safe_cadnum}"
+    
+    # Создаём корневую директорию
+    base_dir = Path("/home/gpzu-web/backend/temp/workspace") / dir_name
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Создаём подпапку "База проекта"
+    project_base = base_dir / "База_проекта"
+    project_base.mkdir(parents=True, exist_ok=True)
+    
+    # Создаём README.txt с инструкцией
+    readme_path = base_dir / "README.txt"
+    readme_content = f"""ГРАФИЧЕСКАЯ ЧАСТЬ ГРАДОСТРОИТЕЛЬНОГО ПЛАНА
+Кадастровый номер: {cadnum}
+
+СТРУКТУРА ПРОЕКТА:
+==================
+
+рабочий_набор.WOR       - Рабочий набор MapInfo (2 карты)
+База_проекта/           - Папка со всеми слоями проекта
+
+ИНСТРУКЦИЯ ПО ОТКРЫТИЮ:
+=======================
+
+1. Убедитесь что установлен MapInfo Professional
+2. Откройте файл "рабочий_набор.WOR"
+3. Автоматически откроются 2 карты:
+   - Карта 1: Градостроительный план (детальная)
+   - Карта 2: Ситуационный план (обзорная)
+
+СОДЕРЖАНИЕ СЛОЁВ:
+=================
+
+База_проекта/ содержит:
+  - участок.TAB              : Границы земельного участка
+  - участок_точки.TAB        : Характерные точки границ
+  - зона_строительства.TAB   : Минимальные отступы от границ (-5м)
+  - окс.TAB                  : Объекты капитального строительства (если есть)
+  - зоуит_*.TAB              : Зоны с особыми условиями использования (если есть)
+
+КАРТА 1 (Градостроительный план):
+  Показывает детальную информацию об участке, зоне строительства,
+  объектах капстроительства и ограничениях (ЗОУИТ).
+
+КАРТА 2 (Ситуационный план):
+  Показывает расположение участка в контексте окружающей застройки,
+  с адресными подписями, строениями и дорогами.
+
+ПРИМЕЧАНИЯ:
+===========
+
+- Все файлы в кодировке Windows-1251 (CP1251)
+- Система координат: МСК-42 зона 1
+- Для корректного отображения требуется MapInfo Professional 7.0+
+
+Дата создания: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+Создано автоматически системой GPZU-Web
+"""
+    
+    with open(readme_path, 'w', encoding='cp1251') as f:
+        f.write(readme_content)
+    
+    logger.info(f"Создана рабочая директория: {base_dir}")
+    logger.info(f"  - Корневая папка: {base_dir.name}")
+    logger.info(f"  - Подпапка слоёв: База_проекта")
+    logger.info(f"  - README.txt создан")
+    
+    return base_dir
+
+
+def get_project_base_dir(workspace_dir: Path) -> Path:
+    """
+    Получить путь к подпапке "База проекта".
+    
+    Args:
+        workspace_dir: Корневая директория проекта
+    
+    Returns:
+        Path к папке "База_проекта"
+    """
+    return workspace_dir / "База_проекта"
 
 
 def cleanup_workspace_directory(workspace_dir: Path):

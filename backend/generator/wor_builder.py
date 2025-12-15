@@ -23,70 +23,105 @@ def create_workspace_wor(
     workspace_dir: Path,
     cadnum: str,
     has_oks: bool = False,
-    zouit_files: Optional[List[Tuple[Path, Path]]] = None,  # ✅ ИЗМЕНЕНО
+    zouit_files: Optional[List[Tuple[Path, Path]]] = None,
     red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
     use_absolute_paths: bool = False
 ) -> Path:
     """
-    Создать WOR-файл рабочего набора.
+    Создать WOR-файл рабочего набора с двумя картами.
     
-    ✨ ОБНОВЛЕНО: Поддержка отдельных слоёв для каждой ЗОУИТ.
+    ✨ ОБНОВЛЕНО: 
+    - Две карты: основная (градплан) и ситуационный план
+    - Относительные пути к слоям в подпапке "База_проекта"
     
-    Рабочий набор содержит:
-    - Map Window с открытыми слоями
-    - Layout Window с рамкой А3, штампом, легендой
+    Структура:
+    workspace_dir/
+    ├── рабочий_набор.WOR            # Этот файл
+    └── База_проекта/                # Все слои здесь
+        ├── участок.TAB
+        └── ...
     
     Args:
-        workspace_dir: Директория со слоями MIF/MID
+        workspace_dir: Корневая директория проекта
         cadnum: Кадастровый номер участка
         has_oks: Есть ли слой ОКС
-        zouit_files: Список файлов ЗОУИТ [(mif, mid), ...] или None  # ✅ ИЗМЕНЕНО
+        zouit_files: Список файлов ЗОУИТ [(mif, mid), ...]
         red_lines_path: Путь к слою красных линий
-        use_absolute_paths: Использовать абсолютные пути к MIF файлам
+        use_absolute_paths: Использовать абсолютные пути
     
     Returns:
         Path к созданному WOR-файлу
     """
     
-    logger.info(f"Создание WOR-файла рабочего набора для {cadnum}")
+    from core.layers_config import LayerPaths
+    
+    logger.info(f"Создание WOR-файла с 2 картами для {cadnum}")
     
     workspace_dir = Path(workspace_dir)
     wor_path = workspace_dir / "рабочий_набор.WOR"
     
-    # Формируем список слоёв для Map From
-    map_layers = ["участок", "участок_точки", "зона_строительства"]
-    if has_oks:
-        map_layers.append("окс")
+    # Относительный путь к папке со слоями
+    layers_subdir = "База_проекта"
     
-    # ✅ ОБНОВЛЕНО: Добавляем каждый слой ЗОУИТ
+    # ========== КАРТА 1: Основная (градплан) ========== #
+    
+    map1_layers = ["участок_точки", "зона_строительства"]
+    
     if zouit_files:
-        for i, (mif_path, _) in enumerate(zouit_files, start=1):
-            layer_name = mif_path.stem  # Имя без расширения
-            map_layers.append(layer_name)
+        for mif_path, _ in zouit_files:
+            map1_layers.append(mif_path.stem)
     
-    map_from_str = ",".join(map_layers)
+    map1_layers.append("участок")
     
-    # ========== Создание WOR-файла ========== #
+    if has_oks:
+        map1_layers.insert(0, "окс")
+    
+    map1_from_str = ",".join(map1_layers)
+    
+    # ========== КАРТА 2: Ситуационный план ========== #
+    
+    situation_layers = LayerPaths.get_situation_map_layers()
+    
+    map2_layers = ["участок"]
+    map2_layers.append("Подписи")
+    map2_layers.append("ACTUAL_LAND")
+    map2_layers.append("Строения")
+    map2_layers.append("Проезды")
+    
+    map2_from_str = ",".join(map2_layers)
+    
+    # ========== Создание содержимого WOR-файла ========== #
     
     wor_content = '''!Workspace
 !Version  950
 !Charset WindowsCyrillic
-Open Table "участок.MIF" As участок Interactive
-Open Table "участок_точки.MIF" As участок_точки Interactive
-Open Table "зона_строительства.MIF" As зона_строительства Interactive
 '''
     
+    # Открываем таблицы из подпапки "База_проекта"
+    wor_content += f'Open Table "{layers_subdir}\\\\участок.TAB" As участок Interactive\n'
+    wor_content += f'Open Table "{layers_subdir}\\\\участок_точки.TAB" As участок_точки Interactive\n'
+    wor_content += f'Open Table "{layers_subdir}\\\\зона_строительства.TAB" As зона_строительства Interactive\n'
+    
     if has_oks:
-        wor_content += 'Open Table "окс.MIF" As окс Interactive\n'
+        wor_content += f'Open Table "{layers_subdir}\\\\окс.TAB" As окс Interactive\n'
     
-    # ✅ ОБНОВЛЕНО: Открываем каждый файл ЗОУИТ отдельно
+    # Открываем каждый файл ЗОУИТ из подпапки
     if zouit_files:
-        for i, (mif_path, _) in enumerate(zouit_files, start=1):
-            filename = mif_path.name
+        for mif_path, _ in zouit_files:
+            filename = mif_path.name.replace('.MIF', '.TAB')
             table_name = mif_path.stem
-            wor_content += f'Open Table "{filename}" As {table_name} Interactive\n'
+            wor_content += f'Open Table "{layers_subdir}\\\\{filename}" As {table_name} Interactive\n'
     
-    wor_content += f'''Map From {map_from_str} 
+    # Открываем фиксированные слои для второй карты (абсолютные пути)
+    for layer_path in situation_layers:
+        if layer_path.exists():
+            layer_name = layer_path.stem
+            # Используем абсолютные пути для внешних слоёв
+            wor_content += f'Open Table "{layer_path}" As {layer_name} Interactive\n'
+    
+    # ========== КАРТА 1: Основная (градплан) ========== #
+    
+    wor_content += f'''Map From {map1_from_str} 
   Position (0.0520833,0.0520833) Units "in"
   Width 9.91667 Units "in" Height 7 Units "in" 
 Set Window FrontWindow() ScrollBars Off Autoscroll On Enhanced On Smooth Text Antialias Image High
@@ -95,38 +130,72 @@ Set Map
   Zoom Entire Layer 1
   Preserve Zoom Display Zoom
   Distance Units "m" Area Units "sq m" XY Units "m"
-Set Map
-  Layer 1
+'''
+    
+    # Стили слоёв для карты 1
+    for i in range(1, len(map1_layers) + 1):
+        wor_content += f'''Set Map
+  Layer {i}
     Display Graphic
     Global Pen (1,2,0) Brush (2,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-  Layer 2
-    Display Graphic
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-  Layer 3
-    Display Graphic
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-Set Window FrontWindow() Printer
+'''
+    
+    wor_content += '''Set Window FrontWindow() Printer
  Name "PDF24" Orientation Portrait Copies 1
  Papersize 9
-Dim WorkspaceMaximizedWindow As Integer
+'''
+    
+    # ========== КАРТА 2: Ситуационный план ========== #
+    
+    wor_content += f'''Map From {map2_from_str} 
+  Position (0.572917,0.697917) Units "in"
+  Width 7.8125 Units "in" Height 4.71875 Units "in" 
+Set Window FrontWindow() ScrollBars Off Autoscroll On Enhanced On Smooth Text Antialias Image High
+Set Map
+  CoordSys Earth Projection 8, 1001, "m", 88.46666666666, 0, 1, 2300000, -5512900.5719999997
+  Zoom Entire Layer 1
+  Preserve Zoom Display Zoom
+  Distance Units "m" Area Units "sq m" XY Units "m"
+  Distance Type Cartesian
+'''
+    
+    # Стили слоёв для карты 2
+    wor_content += '''Set Map
+  Layer 1
+    Display Global
+    Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+'''
+    
+    for i in range(2, len(map2_layers) + 1):
+        wor_content += f'''  Layer {i}
+    Display Graphic
+    Global Pen (1,2,0) Brush (2,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+'''
+    
+    wor_content += '''Set Window FrontWindow() Printer
+ Name "PDF24" Orientation Portrait Copies 1
+ Papersize 9
+'''
+    
+    # ========== Финализация ========== #
+    
+    wor_content += '''Dim WorkspaceMaximizedWindow As Integer
 WorkspaceMaximizedWindow = Frontwindow()
 Set Window WorkspaceMaximizedWindow Max
 Undim WorkspaceMaximizedWindow
 '''
     
-    # Записываем файл в правильной кодировке
+    # ========== Запись файла ========== #
+    
     with open(wor_path, 'wb') as f:
         f.write(wor_content.encode('cp1251'))
-        
+    
+    # ========== Логирование ========== #
     
     logger.info(f"WOR-файл создан: {wor_path}")
-    logger.info(f"  Слоёв в рабочем наборе: {len(map_layers)}")
-    logger.info(f"  - Участок (полигон + точки)")
-    logger.info(f"  - Зона строительства")
-    if has_oks:
-        logger.info(f"  - ОКС")
-    if zouit_files:
-        logger.info(f"  - ЗОУИТ: {len(zouit_files)} отдельных слоёв")
+    logger.info(f"  Слои используют относительные пути: {layers_subdir}\\")
+    logger.info(f"  КАРТА 1: {len(map1_layers)} слоёв")
+    logger.info(f"  КАРТА 2: {len(map2_layers)} слоёв")
     
     return wor_path
 

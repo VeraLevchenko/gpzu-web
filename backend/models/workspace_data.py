@@ -77,6 +77,7 @@ class ZouitInfo:
     """
     name: Optional[str] = None                     # Наименование ЗОУИТ
     type: Optional[str] = None                     # Тип ограничения
+    registry_number: Optional[str] = None          # ✅ ДОБАВИТЬ ЭТУ СТРОКУ
     restriction: Optional[str] = None              # Описание ограничения
     geometry: Optional[Any] = None                 # Геометрия (обычно Polygon)
 
