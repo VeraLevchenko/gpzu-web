@@ -58,6 +58,149 @@ def _ensure_nl(s: str) -> str:
     return s if s.endswith("\n") else s + "\n"
 
 
+def _wrap_mi_text(s: str, width: int = 48, indent: str = "  ", max_width: Optional[int] = None) -> str:
+    """Перенос длинных строк для MapInfo Create Text (через \n)."""
+    s = (s or "").strip()
+    if max_width is not None:
+        width = int(max_width)
+    if not s:
+        return ""
+    words = s.split()
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        if not cur:
+            cur = w
+            continue
+        if len(cur) + 1 + len(w) <= width:
+            cur += " " + w
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    out = lines[0]
+    for ln in lines[1:]:
+        out += "\n" + indent + ln
+    return out
+
+
+def _build_zouit_legend_block(
+    items: Optional[List[Tuple[str, str]]],
+    *,
+    template_filename: str,
+) -> str:
+    """
+    Легенда ЗОУИТ:
+    - слева прямоугольник-образец (Create Rect) в той же колонке, что и существующие образцы;
+      координаты рамки и колонок взяты ТОЧНО из шаблонов map1.
+    - справа текст: «наименование (реестровый номер)»
+    - перенос строк по ширине рамки легенды (без обрезки)
+    - разреженность ТОЛЬКО между разными ЗОУИТ (gap), внутри одного ЗОУИТ межстрочный интервал обычный
+    - ни текст, ни прямоугольник не выходят за рамку легенды
+    """
+    if not items:
+        return ""
+
+    # --- точные координаты рамки легенды и колонок образцов из шаблонов ---
+    if "map1_a2" in template_filename:
+        legend_left  = 19.2944
+        legend_right = 23.2618
+
+        symbol_left  = 19.4104
+        symbol_right = 20.2875
+
+        x_text = 20.3618
+        y0 = 3.75
+    else:  # map1_a3
+        legend_left  = 12.3333
+        legend_right = 16.3007
+
+        symbol_left  = 12.4625
+        symbol_right = 13.3049
+
+        x_text = 13.4007
+        y0 = 3.75
+
+    # --- параметры размещения ---
+    pad_right = 0.01      # чтобы гарантированно не задеть правую рамку легенды
+    rect_h = 0.14
+    rect_w = symbol_right - symbol_left
+
+    # Межстрочный интервал внутри одного ЗОУИТ — обычный (не разрежаем)
+    line_h = 0.09
+
+    # Разреженность ТОЛЬКО между разными ЗОУИТ — увеличиваем gap
+    gap = 0.20
+
+    # ширина текстового поля строго внутри рамки легенды
+    text_width = (legend_right - pad_right) - x_text
+    if text_width < 1.0:
+        text_width = 1.0
+
+    # перенос по ширине (без обрезки)
+    # Times New Roman 10: ~13 символов/дюйм — берём 13, чтобы не вылезать вправо
+    max_chars = max(18, int(text_width * 16))
+
+    out: List[str] = []
+    y = y0
+
+    for name, reg in items:
+        name = (name or "").strip()
+        reg = (reg or "").strip()
+        if not name:
+            continue
+
+        label = f"{name} ({reg})" if reg else name
+
+        # перенос по словам (реальные \n) — НИКАКОЙ разреженности внутри элемента
+        wrapped = _wrap_mi_text(label, max_width=max_chars).strip()
+        n_lines = wrapped.count("\n") + 1
+
+        # WOR: внутри кавычек должен быть \n (backslash+n), а кавычки удваиваем
+        txt = wrapped.replace("\r", "").replace("\n", "\\n").replace('"', '""')
+
+        # высота блока по тексту
+        block_h = max(rect_h, n_lines * line_h)
+
+        # прямоугольник центрируем по высоте блока текста
+        y_rect = y + (block_h - rect_h) / 2
+
+        # --- прямоугольник-образец (в колонке существующих образцов) ---
+        out.append(
+            """  Create Rect ({x1},{y1}) ({x2},{y2})
+    Pen (1,2,0)
+    Brush (2,16777215)""".format(
+                x1=round(symbol_left, 4),
+                y1=round(y_rect, 4),
+                x2=round(symbol_left + rect_w, 4),
+                y2=round(y_rect + rect_h, 4),
+            )
+        )
+
+        # --- текст справа, строго в рамке легенды ---
+        out.append(
+            """  Create Text
+    "{txt}"
+    ({x1},{y1}) ({x2},{y2})
+    Font ("Times New Roman CYR",2,8,0)""".format(
+                txt=txt,
+                x1=round(x_text, 4),
+                y1=round(y, 4),
+                x2=round(x_text + text_width, 4),
+                y2=round(y + block_h, 4),
+            )
+        )
+
+        # следующий элемент ниже (разреженность между элементами)
+        y += block_h + gap
+
+    return "\n\n".join(out) + "\n"
+
+
+
+
+
 def _load_and_render_layout(filename: str, ctx: dict[str, str]) -> str:
     path = _templates_dir() / filename
     if not path.exists():
@@ -71,6 +214,8 @@ def create_workspace_wor(
     has_oks: bool = False,
     zouit_files: Optional[List[Tuple[Path, Path]]] = None,
     has_zouit_labels: bool = False,
+    zouit_legend_items: Optional[List[Tuple[str, str]]] = None,
+    zouit_list: Optional[list] = None,  # данные workspace.zouit для легенды
     red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
     use_absolute_paths: bool = False,
     address: Optional[str] = None,           # Адрес участка из выписки ЕГРН
@@ -136,6 +281,30 @@ def create_workspace_wor(
         "DATE_DDMMYYYY": current_date,
         "SPECIALIST": specialist_name or "",
     }
+
+    # Если список легенды не передан, но есть workspace.zouit — собираем (name, registry_number)
+    if (not zouit_legend_items) and zouit_list:
+        items: List[Tuple[str, str]] = []
+        for z in zouit_list:
+            name = getattr(z, 'name', None)
+            reg = getattr(z, 'registry_number', None)
+            if not name:
+                continue
+            items.append((str(name), str(reg) if reg else ''))
+        # убираем дубли, сохраняя порядок
+        seen = set()
+        uniq: List[Tuple[str, str]] = []
+        for n, r in items:
+            key = (n, r)
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append((n, r))
+        zouit_legend_items = uniq
+
+
+    # Легенда ЗОУИТ вставляется ТОЛЬКО в отчёты map1 через {{ZOUIT_LEGEND}}
+    ctx["ZOUIT_LEGEND"] = ""
 
     # ========== КАРТА 1: Основная (градплан) ========== #
 
@@ -361,12 +530,19 @@ Set Map
     # ========== LAYOUTS: 3 отчёта из файлов-шаблонов ========== #
 
     # 1) A3 landscape, карта 1
+    ctx["ZOUIT_LEGEND"] = _build_zouit_legend_block(
+        zouit_legend_items, template_filename="map1_a3_landscape.wor.txt"
+    )
     wor_content += _load_and_render_layout("map1_a3_landscape.wor.txt", ctx)
 
     # 2) A2 landscape, карта 1
+    ctx["ZOUIT_LEGEND"] = _build_zouit_legend_block(
+        zouit_legend_items, template_filename="map1_a2_landscape.wor.txt"
+    )
     wor_content += _load_and_render_layout("map1_a2_landscape.wor.txt", ctx)
 
-    # 3) A4 landscape, карта 2 (ситуационный план)
+    # 3) A4 landscape, карта 2 (ситуационный план) — без легенды ЗОУИТ
+    ctx["ZOUIT_LEGEND"] = ""
     wor_content += _load_and_render_layout("map2_a4_landscape.wor.txt", ctx)
 
     # ========== Запись файла ========== #
