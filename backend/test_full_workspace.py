@@ -209,7 +209,10 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
         cadnum=workspace.parcel.cadnum,
         has_oks=has_oks,
         zouit_files=result_zouit,
-        has_zouit_labels=(result_labels is not None)
+        has_zouit_labels=(result_labels is not None),
+        address=workspace.parcel.address,           # ← ДОБАВИТЬ
+        specialist_name="Ляпина К.С."               # ← ДОБАВИТЬ (или из учётки)
+
     )
     print(f"✅ {wor_path.name} создан в корне проекта")
     print()
