@@ -160,6 +160,29 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
     else:
         print(f"⊘  ЗОУИТ пропущены (нет данных или геометрии)")
     
+    # ========== ШАГ 4-Б: Создание слоя подписей ЗОУИТ ========== #
+    
+    if result_zouit and workspace.parcel.geometry:
+        print()
+        print("ШАГ 4-Б: Создание слоя подписей ЗОУИТ")
+        print("-" * 80)
+        
+        from generator.mif_writer import create_zouit_labels_mif
+        
+        result_labels = create_zouit_labels_mif(
+            zouit_list=workspace.zouit,
+            parcel_geometry=workspace.parcel.geometry,
+            output_dir=project_base
+        )
+        
+        if result_labels:
+            mif_labels, mid_labels = result_labels
+            print(f"✅ {mif_labels.name} - слой подписей ЗОУИТ")
+            print(f"   Точки размещены в центре пересечения зон с участком")
+        else:
+            print(f"⊘  Слой подписей не создан (нет пересечений)")
+        print()
+
     print()
     
     # ========== ШАГ 5: Конвертация MIF → TAB ========== #
@@ -185,7 +208,8 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
         workspace_dir=workspace_dir,
         cadnum=workspace.parcel.cadnum,
         has_oks=has_oks,
-        zouit_files=result_zouit
+        zouit_files=result_zouit,
+        has_zouit_labels=(result_labels is not None)
     )
     print(f"✅ {wor_path.name} создан в корне проекта")
     print()

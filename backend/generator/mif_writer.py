@@ -348,6 +348,8 @@ def create_zouit_mif(
     - Каждая зона создается в отдельном слое (файле)
     - Добавлено поле "Реестровый_номер"
     - БЕЗ заливки - только контур
+    - ✅ MultiPolygon: записываются ВСЕ части как отдельные регионы
+    - ✅ ДОБАВЛЕНО детальное логирование
     
     Args:
         zouit_list: Список объектов ZouitInfo
@@ -374,7 +376,12 @@ def create_zouit_mif(
         logger.warning("Нет ЗОУИТ с геометрией")
         return None
     
+    logger.info(f"ЗОУИТ с геометрией: {len(valid_zones)} из {len(zouit_list)}")
+    
     created_files = []
+    
+    # ✅ ДОБАВИТЬ: импорт для обработки MultiPolygon
+    from shapely.geometry import MultiPolygon, Polygon
     
     # Создаем отдельный слой для каждой зоны
     for i, zone in enumerate(valid_zones, start=1):
@@ -398,7 +405,44 @@ def create_zouit_mif(
         mif_path = output_dir / f"{filename_base}.MIF"
         mid_path = output_dir / f"{filename_base}.MID"
         
+        logger.info(f"Создание слоя ЗОУИТ {i}/{len(valid_zones)}: {safe_name}")
+        
         # ========== Создание MIF ========== #
+        
+        geom = zone.geometry
+        
+        if geom is None:
+            logger.warning(f"  ❌ ЗОУИТ {i} ({safe_name}): геометрия = None, пропускаем")
+            continue
+        
+        # ✅ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Обработка MultiPolygon
+        polygons_to_write = []
+        
+        if isinstance(geom, MultiPolygon):
+            # Записываем ВСЕ части MultiPolygon
+            num_parts = len(geom.geoms)
+            logger.info(f"  Геометрия ЗОУИТ {i} - MultiPolygon с {num_parts} частями, записываем ВСЕ")
+            polygons_to_write = list(geom.geoms)
+        elif isinstance(geom, Polygon):
+            # Обычный Polygon
+            logger.info(f"  Геометрия ЗОУИТ {i} - Polygon")
+            polygons_to_write = [geom]
+        else:
+            logger.warning(f"  ❌ ЗОУИТ {i} ({safe_name}): неизвестный тип геометрии {type(geom).__name__}, пропускаем")
+            continue
+        
+        # Фильтруем пустые полигоны
+        valid_polygons = [p for p in polygons_to_write if p and not p.is_empty and hasattr(p, 'exterior')]
+        
+        if not valid_polygons:
+            logger.warning(f"  ❌ ЗОУИТ {i} ({safe_name}): нет валидных полигонов, пропускаем")
+            continue
+        
+        # Подсчитываем общее количество точек
+        total_points = sum(len(p.exterior.coords) for p in valid_polygons)
+        logger.info(f"  ✅ ЗОУИТ {i} ({safe_name}): записываем {len(valid_polygons)} полигонов с {total_points} точками")
+        
+        # ========== Запись MIF ========== #
         
         with open(mif_path, 'wb') as f:
             def w(text: str):
@@ -418,21 +462,26 @@ def create_zouit_mif(
             w('  Ограничения Char(254)\n')
             w('Data\n\n')
             
-            # Геометрия
-            geom = zone.geometry
-            
-            if hasattr(geom, 'exterior'):
-                # Polygon
-                coords = list(geom.exterior.coords)
+            # ✅ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Записываем MultiPolygon как Region с несколькими частями
+            if len(valid_polygons) == 1:
+                # Один полигон - простой регион
+                coords = list(valid_polygons[0].exterior.coords)
                 w('Region  1\n')
                 w(f'  {len(coords)}\n')
                 for x, y in coords:
                     w(f'{x} {y}\n')
-                
-                # БЕЗ ЗАЛИВКИ - только контур
-                w('    Pen (1,2,0)\n')
-                w('    Brush (1,0,16777215)\n')
+            else:
+                # Несколько полигонов - регион с несколькими частями
+                w(f'Region  {len(valid_polygons)}\n')
+                for poly in valid_polygons:
+                    coords = list(poly.exterior.coords)
+                    w(f'  {len(coords)}\n')
+                    for x, y in coords:
+                        w(f'{x} {y}\n')
             
+            # БЕЗ ЗАЛИВКИ - только контур
+            w('    Pen (1,2,0)\n')
+            w('    Brush (1,0,16777215)\n')
             w('\n')
         
         # ========== Создание MID ========== #
@@ -460,11 +509,145 @@ def create_zouit_mif(
             f.write(line.encode('cp1251'))
         
         created_files.append((mif_path, mid_path))
-        logger.info(f"  ✅ Слой ЗОУИТ {i}: {safe_name}")
+        logger.info(f"  ✅ Слой ЗОУИТ {i} создан: {mif_path.name}")
     
     logger.info(f"✅ Создано отдельных слоёв ЗОУИТ: {len(created_files)}")
     
     return created_files
+
+def create_zouit_labels_mif(
+    zouit_list: List[Any],
+    parcel_geometry: Any,
+    output_dir: Path,
+    filename: str = "зоуит_подписи"
+) -> Optional[Tuple[Path, Path]]:
+    """
+    Создать отдельный слой с точками-подписями для ЗОУИТ.
+    
+    Создаёт невидимые точки в центре ПЕРЕСЕЧЕНИЯ каждой ЗОУИТ с участком.
+    Это позволяет:
+    - В основном слое ЗОУИТ хранить ВСЮ зону целиком
+    - В слое подписей иметь точки ТОЛЬКО в границах участка
+    
+    Args:
+        zouit_list: Список объектов ZouitInfo с геометрией
+        parcel_geometry: Геометрия участка (Polygon из workspace.parcel.geometry)
+        output_dir: Директория для сохранения
+        filename: Имя файла (по умолчанию "зоуит_подписи")
+    
+    Returns:
+        Кортеж (Path к MIF, Path к MID) или None если нет зон
+    """
+    
+    if not zouit_list:
+        logger.info("Нет ЗОУИТ для создания слоя подписей")
+        return None
+    
+    logger.info(f"Создание отдельного слоя подписей ЗОУИТ: {len(zouit_list)} зон")
+    
+    from shapely.geometry import MultiPolygon, Polygon
+    
+    output_dir = Path(output_dir)
+    mif_path = output_dir / f"{filename}.MIF"
+    mid_path = output_dir / f"{filename}.MID"
+    
+    # Собираем точки для подписей
+    label_points = []
+    
+    for i, zone in enumerate(zouit_list, start=1):
+        if not zone.geometry:
+            logger.debug(f"ЗОУИТ {i} ({zone.name}): нет геометрии, пропускаем")
+            continue
+        
+        try:
+            # 🔥 КЛЮЧЕВОЙ МОМЕНТ: Вычисляем пересечение с участком
+            intersection = parcel_geometry.intersection(zone.geometry)
+            
+            if intersection.is_empty:
+                logger.debug(f"ЗОУИТ {i} ({zone.name}): нет пересечения с участком")
+                continue
+            
+            if intersection.area < 1.0:
+                logger.debug(f"ЗОУИТ {i} ({zone.name}): пересечение слишком мало ({intersection.area:.2f} кв.м)")
+                continue
+            
+            # Для MultiPolygon берём самую большую часть пересечения
+            if isinstance(intersection, MultiPolygon):
+                logger.info(f"  ЗОУИТ {i} ({zone.name}): MultiPolygon пересечение, берём самую большую часть")
+                intersection = max(intersection.geoms, key=lambda p: p.area)
+            
+            if not isinstance(intersection, Polygon):
+                logger.warning(f"ЗОУИТ {i} ({zone.name}): пересечение не Polygon ({type(intersection).__name__})")
+                continue
+            
+            # Точка в центре ПЕРЕСЕЧЕНИЯ
+            centroid = intersection.centroid
+            
+            # Получаем реестровый номер
+            registry_number = getattr(zone, 'registry_number', None) or zone.name or "ЗОУИТ"
+            
+            label_points.append({
+                'x': centroid.x,
+                'y': centroid.y,
+                'registry_number': registry_number,
+                'name': zone.name or "",
+                'type': zone.type or ""
+            })
+            
+            logger.info(f"  ✅ Точка подписи для '{zone.name}': X={centroid.x:.2f}, Y={centroid.y:.2f}")
+            
+        except Exception as e:
+            logger.warning(f"Ошибка создания точки подписи для ЗОУИТ {i} ({zone.name}): {e}")
+            continue
+    
+    if not label_points:
+        logger.warning("Не создано ни одной точки подписи ЗОУИТ")
+        return None
+    
+    logger.info(f"📍 Создано точек подписей: {len(label_points)}")
+    
+    # ========== Создание MIF ========== #
+    
+    with open(mif_path, 'wb') as f:
+        def w(text: str):
+            f.write(text.encode('cp1251'))
+        
+        # Заголовок
+        w('Version   450\n')
+        w('Charset "WindowsCyrillic"\n')
+        w('Delimiter ","\n')
+        w(f'{MSK42_COORDSYS}\n')
+        
+        # Поля
+        w('Columns 3\n')
+        w('  Реестровый_номер Char(254)\n')
+        w('  Наименование Char(254)\n')
+        w('  Тип Char(254)\n')
+        w('Data\n\n')
+        
+        # Точки (невидимые)
+        for point in label_points:
+            w(f'Point {point["x"]} {point["y"]}\n')
+            w('\n')
+    
+    # ========== Создание MID ========== #
+    
+    with open(mid_path, 'wb') as f:
+        for point in label_points:
+            registry_safe = safe_encode_cp1251(point['registry_number'])
+            name_safe = safe_encode_cp1251(point['name'])
+            type_safe = safe_encode_cp1251(point['type'])
+            
+            registry = escape_mif_string(registry_safe)
+            name = escape_mif_string(name_safe)
+            zone_type = escape_mif_string(type_safe)
+            
+            line = f'{registry},{name},{zone_type}\n'
+            f.write(line.encode('cp1251'))
+    
+    logger.info(f"✅ Слой подписей ЗОУИТ создан: {mif_path.name}")
+    
+    return mif_path, mid_path
 
 
 # ================ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ================ #
