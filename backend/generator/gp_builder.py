@@ -696,7 +696,7 @@ class GPBuilder:
             )
             context["capital_objects_count"] = count
         else:
-            context["capital_objects_text"] = "Объекты капитального строительства отсутствуют"
+            context["capital_objects_text"] = "Не имеется"
             context["capital_objects_count"] = 0
 
         # ЗОУИТ в удобном виде для таблицы (раздел 6)

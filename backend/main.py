@@ -10,7 +10,8 @@
 - MID/MIF: подготовка файлов для MapInfo
 - ТУ: формирование запросов технических условий
 - ГПЗУ: подготовка градостроительных планов
-- ОТКАЗ: формирование отказов в выдаче ГПЗУ  ← НОВОЕ
+- ОТКАЗ: формирование отказов в выдаче ГПЗУ
+- WORKSPACE: создание рабочих наборов MapInfo  ← НОВОЕ
 
 Общие сервисы:
 - Parsers: парсинг заявлений, ЕГРН, пространственный анализ
@@ -30,7 +31,8 @@ from api.gp.kaiten import router as kaiten_router
 from api.gp.midmif import router as midmif_router
 from api.gp.tu import router as tu_router
 from api.gp.gradplan import router as gradplan_router
-from api.gp.refusal import router as refusal_router  # ← НОВОЕ
+from api.gp.refusal import router as refusal_router
+from api.gp.workspace import router as workspace_router  # ← НОВОЕ
 
 # ========================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -110,7 +112,8 @@ app.include_router(kaiten_router)      # Создание задач в Kaiten
 app.include_router(midmif_router)      # Подготовка MID/MIF
 app.include_router(tu_router)          # Формирование запросов ТУ
 app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
-app.include_router(refusal_router)     # ← НОВОЕ: Формирование отказов
+app.include_router(refusal_router)     # Формирование отказов
+app.include_router(workspace_router)   # ← НОВОЕ: Создание рабочих наборов MapInfo
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
@@ -135,7 +138,8 @@ async def health_check():
             "midmif": "enabled",
             "tu": "enabled",
             "gradplan": "enabled",
-            "refusal": "enabled",  # ← НОВОЕ
+            "refusal": "enabled",
+            "workspace": "enabled",  # ← НОВОЕ
         }
     }
 
@@ -183,10 +187,16 @@ async def api_info():
                 "endpoints": 3
             },
             {
-                "name": "Отказ",  # ← НОВОЕ
+                "name": "Отказ",
                 "prefix": "/api/gp/refusal",
                 "description": "Формирование отказов в выдаче ГПЗУ",
                 "endpoints": 2
+            },
+            {
+                "name": "Рабочий набор",  # ← НОВОЕ
+                "prefix": "/api/gp/workspace",
+                "description": "Создание рабочих наборов MapInfo",
+                "endpoints": 1
             },
         ]
     }

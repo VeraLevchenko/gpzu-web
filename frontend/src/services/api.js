@@ -1,3 +1,4 @@
+// frontend/src/services/api.js
 import axios from 'axios';
 
 // Умное определение API URL
@@ -118,7 +119,7 @@ export const tuApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
       responseType: 'blob',
     });
-    
+  
     return response;
   }
 };
@@ -171,6 +172,21 @@ export const refusalApi = {
       responseType: 'blob',
     });
     return response;
+  }
+};
+
+// ========================================
+// МОДУЛЬ: РАБОЧИЙ НАБОР MAPINFO ← НОВОЕ
+// ========================================
+export const workspaceApi = {
+  // Создание рабочего набора MapInfo
+  createWorkspace: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/gp/workspace/create', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob'  // ВАЖНО: получаем ZIP как blob
+    });
   }
 };
 
