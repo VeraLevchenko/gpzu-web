@@ -85,6 +85,43 @@ def _wrap_mi_text(s: str, width: int = 48, indent: str = "  ", max_width: Option
     return out
 
 
+def _wrap_address_for_mapinfo(address: str, width: int = 65) -> str:
+    """
+    Перенос адреса для MapInfo Create Text.
+    MapInfo требует многострочный текст в формате с переносом строк внутри кавычек.
+    """
+    if not address:
+        return ""
+    
+    address = address.strip()
+    words = address.split()
+    lines = []
+    current_line = ""
+    
+    for word in words:
+        if not current_line:
+            current_line = word
+        elif len(current_line) + 1 + len(word) <= width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    
+    if current_line:
+        lines.append(current_line)
+    
+    # Объединяем строки с переносом для MapInfo
+    # В MapInfo многострочный текст записывается как "строка1\n  строка2\n  строка3"
+    if len(lines) == 1:
+        return lines[0]
+    
+    result = lines[0]
+    for line in lines[1:]:
+        result += "\\n" + line  # Используем \\n для экранирования в WOR файле
+    
+    return result
+
+
 def _build_zouit_legend_block(
     items: Optional[List[Tuple[str, str]]],
     *,
@@ -275,14 +312,9 @@ def create_workspace_wor(
     if not specialist_name:
         specialist_name = "Ляпина К.С."
 
-    # Контекст для шаблонов layout
-    ctx = {
-        "CADNUM": cadnum,
-        "ADDRESS": address or "",
-        "DATE_DDMMYYYY": current_date,
-        "SPECIALIST": specialist_name or "",
-        "AREA": f"{int(round(area))}" if area else "0",
-    }
+    # ✅ ДОБАВЛЕНО: Перенос длинного адреса
+    # Ширина поля ADDRESS в шаблоне: 4.5 дюйма при шрифте 9pt ≈ 80 символов
+    address_wrapped = _wrap_address_for_mapinfo(address or "", width=80)
 
     # Если список легенды не передан, но есть workspace.zouit — собираем (name, registry_number)
     if (not zouit_legend_items) and zouit_list:
@@ -304,9 +336,6 @@ def create_workspace_wor(
             uniq.append((n, r))
         zouit_legend_items = uniq
 
-
-    # Легенда ЗОУИТ вставляется ТОЛЬКО в отчёты map1 через {{ZOUIT_LEGEND}}
-    ctx["ZOUIT_LEGEND"] = ""
 
     # ========== КАРТА 1: Основная (градплан) ========== #
 
@@ -347,6 +376,18 @@ def create_workspace_wor(
     map2_layers = ["участок", "Подписи", "ACTUAL_LAND", "Строения", "Проезды"]
     map2_from_str = ",".join(map2_layers)
 
+    # ========== Контекст для шаблонов layout ========== #
+    # ✅ ВАЖНО: Создаётся ПОСЛЕ map1_from_str и map2_from_str
+    
+    ctx = {
+        "CADNUM": cadnum,
+        "ADDRESS": address_wrapped,  # ✅ ИСПРАВЛЕНО: используем перенесённый адрес
+        "DATE_DDMMYYYY": current_date,
+        "SPECIALIST": specialist_name or "",
+        "AREA": f"{int(round(area))}" if area else "0",
+        "MAP1_LAYERS": map1_from_str,  # ✅ Для отчётов A3 и A2
+    }
+
     # ========== Создание содержимого WOR-файла ========== #
 
     wor_content = '''!Workspace
@@ -375,8 +416,8 @@ def create_workspace_wor(
     if has_zouit_labels:
         wor_content += f'Open Table "{layers_subdir}\\\\зоуит_подписи.TAB" As зоуит_подписи Interactive\n'
 
-    # Открываем Красные линии с абсолютным путем
-    wor_content += 'Open Table "/home/gis_layers/Красные линии.TAB" As Красные_линии Interactive\n'
+    # Открываем красные линии
+    wor_content += f'Open Table "{red_lines_path}" As Красные_линии Interactive\n'
 
     # Открываем внешние слои для карты 2
     for layer_path in situation_layers:
@@ -395,6 +436,11 @@ Set Map
   Zoom Entire Layer 1
   Preserve Zoom Display Zoom
   Distance Units "m" Area Units "sq m" XY Units "m"
+'''
+
+    # ✅ СОХРАНЯЕМ ID окна карты 1 для использования в Layout
+    wor_content += '''Dim map1WindowID As Integer
+map1WindowID = FrontWindow()
 '''
 
     # ========== СТИЛИ СЛОЁВ КАРТЫ 1 ========== #
@@ -543,6 +589,10 @@ Set Map
 '''
 
     # ========== LAYOUTS: 3 отчёта из файлов-шаблонов ========== #
+
+    # ✅ АКТИВИРУЕМ КАРТУ 1 перед её Layout'ами
+    wor_content += '''Set Window map1WindowID Front
+'''
 
     # 1) A3 landscape, карта 1
     ctx["ZOUIT_LEGEND"] = _build_zouit_legend_block(

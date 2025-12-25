@@ -13,10 +13,10 @@ import {
 import { 
   InboxOutlined, 
   ArrowLeftOutlined,
-  DownloadOutlined,
   FolderOpenOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { workspaceApi } from '../../services/api';
 import './WorkspaceFlow.css';
 
 const { Dragger } = Upload;
@@ -62,26 +62,15 @@ const WorkspaceFlow = () => {
     setLoading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('egrn_file', egrnFile);
-
-      const response = await fetch('/api/gp/workspace/generate', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Authorization': `Basic ${btoa(
-            `${JSON.parse(localStorage.getItem('auth')).username}:${JSON.parse(localStorage.getItem('auth')).password}`
-          )}`
-        }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Ошибка генерации');
-      }
-
+      console.log('🚀 Начало генерации рабочего набора');
+      
+      // ИСПРАВЛЕНО: вызов правильного метода createWorkspace вместо generate
+      const response = await workspaceApi.createWorkspace(egrnFile);
+      
+      console.log('✅ Получен ответ от API:', response);
+      
       // Извлекаем имя файла из заголовка
-      const contentDisposition = response.headers.get('content-disposition');
+      const contentDisposition = response.headers['content-disposition'];
       let filename = 'workspace.zip';
       
       if (contentDisposition) {
@@ -91,9 +80,10 @@ const WorkspaceFlow = () => {
         }
       }
 
+      console.log('📦 Имя файла:', filename);
+
       // Скачиваем файл
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', filename);
@@ -108,7 +98,8 @@ const WorkspaceFlow = () => {
 
     } catch (error) {
       console.error('❌ Ошибка генерации:', error);
-      message.error(error.message || 'Ошибка генерации рабочего набора');
+      console.error('❌ Детали ошибки:', error.response);
+      message.error(error.response?.data?.detail || 'Ошибка генерации рабочего набора');
     } finally {
       setLoading(false);
     }
@@ -150,7 +141,7 @@ const WorkspaceFlow = () => {
           {currentStep === 0 && (
             <div>
               <Alert
-                message="Шаг 1: Загрузите выписку ЕГРН"
+                title="Шаг 1: Загрузите выписку ЕГРН"
                 description="Загрузите XML файл выписки ЕГРН для автоматической генерации рабочего набора MapInfo"
                 type="info"
                 showIcon
@@ -192,7 +183,7 @@ const WorkspaceFlow = () => {
           {currentStep === 1 && (
             <div>
               <Alert
-                message="Шаг 2: Генерация рабочего набора"
+                title="Шаг 2: Генерация рабочего набора"
                 description="Будет создан архив со структурой папок, слоями MapInfo (TAB) и рабочим набором (WOR)"
                 type="warning"
                 showIcon

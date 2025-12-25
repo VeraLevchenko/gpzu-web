@@ -1,14 +1,14 @@
 # backend/api/gp/workspace.py
 """
-API endpoint для генерации рабочего набора MapInfo из выписки ЕГРН.
+API endpoints для создания рабочего набора MapInfo.
 
 Функционал:
-- Парсинг выписки ЕГРН (XML)
-- Пространственный анализ (поиск ЗОУИТ, ОКС)
-- Генерация структуры папок как в test_full_workspace.py
-- Создание всех слоев MapInfo (TAB)
-- Упаковка в ZIP архив
-- Автоматическое скачивание
+- Парсинг выписки ЕГРН
+- Пространственный анализ (поиск ОКС, ЗОУИТ)
+- Генерация MIF/MID файлов
+- Конвертация в TAB
+- Создание WOR-файла
+- Скачивание ZIP архива
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -16,190 +16,166 @@ from fastapi.responses import StreamingResponse
 import logging
 import io
 import zipfile
-import shutil
 from pathlib import Path
-from datetime import datetime
+import shutil
 
 from parsers.egrn_parser import parse_egrn_xml
-from utils.spatial_analysis import perform_spatial_analysis
-from models.workspace_data import WorkspaceData
+from generator.spatial_adapter import create_workspace_from_egrn
 from generator.mif_writer import (
-    create_workspace_directory,
-    get_project_base_dir,
     create_parcel_mif,
     create_parcel_points_mif,
     create_building_zone_mif,
     create_oks_mif,
     create_zouit_mif,
     create_zouit_labels_mif,
+    create_workspace_directory,
+    get_project_base_dir,
 )
-from generator.wor_builder import create_workspace_wor
 from generator.mif_to_tab_converter import convert_all_mif_to_tab
+from generator.wor_builder import create_workspace_wor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/gp/workspace", tags=["workspace"])
 
 
-@router.get("/health")
-async def health_check():
-    """Проверка работоспособности модуля."""
-    return {"status": "ok", "service": "workspace"}
-
-
-@router.post("/generate")
-async def generate_workspace(egrn_file: UploadFile = File(...)):
+@router.post("/create")
+async def create_workspace(file: UploadFile = File(...)):
     """
-    Генерация рабочего набора MapInfo из выписки ЕГРН.
+    Создание полного рабочего набора MapInfo из выписки ЕГРН.
     
-    Принимает XML файл выписки ЕГРН, выполняет:
-    1. Парсинг ЕГРН
-    2. Пространственный анализ (ЗОУИТ, ОКС)
-    3. Создание структуры папок GP_Graphics_<cadnum>/
-    4. Генерацию всех слоев MapInfo (TAB)
-    5. Создание WOR файла
-    6. Упаковку в ZIP архив
+    Принимает XML выписку ЕГРН и возвращает ZIP архив с:
+    - TAB/DAT/ID/MAP файлами всех слоёв
+    - WOR-файлом рабочего набора
+    - README.txt с описанием
     
     Returns:
-        ZIP архив для скачивания
+        ZIP архив с рабочим набором
+    
+    Raises:
+        400: Неверный формат файла
+        500: Ошибка генерации
     """
-    workspace_dir = None
+    
+    # Проверка формата
+    if not file.filename or not file.filename.lower().endswith('.xml'):
+        raise HTTPException(
+            status_code=400,
+            detail="Файл должен быть в формате XML"
+        )
     
     try:
         # ========== ШАГ 1: Парсинг ЕГРН ========== #
-        logger.info(f"📥 Получен файл: {egrn_file.filename}")
+        logger.info(f"Workspace: парсинг ЕГРН {file.filename}")
         
-        if not egrn_file.filename.lower().endswith('.xml'):
-            raise HTTPException(
-                status_code=400,
-                detail="Поддерживаются только XML файлы выписки ЕГРН"
-            )
-        
-        content = await egrn_file.read()
+        content = await file.read()
         egrn_data = parse_egrn_xml(content)
         
-        if not egrn_data.cadnum:
-            raise HTTPException(
-                status_code=400,
-                detail="Не удалось извлечь кадастровый номер из ЕГРН"
-            )
+        logger.info(f"Workspace: КН={egrn_data.cadnum}, точек={len(egrn_data.coordinates)}")
         
-        logger.info(f"✅ ЕГРН распознан: {egrn_data.cadnum}")
+        # ✅ ДОБАВЛЕНО: Логирование площади после парсинга
+        logger.info(f"🔍 Workspace: Площадь из ЕГРН = '{egrn_data.area}' (тип: {type(egrn_data.area).__name__})")
+        logger.info(f"🔍 Workspace: Адрес = '{egrn_data.address}'")
         
         # ========== ШАГ 2: Пространственный анализ ========== #
-        logger.info("🔍 Запуск пространственного анализа...")
+        logger.info("Workspace: пространственный анализ")
         
-        spatial_result = perform_spatial_analysis(egrn_data)
+        workspace = create_workspace_from_egrn(egrn_data)
         
-        # Создаем WorkspaceData
-        workspace = WorkspaceData(
-            parcel=egrn_data,
-            building_zone=spatial_result.building_zone,
-            capital_objects=spatial_result.capital_objects,
-            zouit=spatial_result.zouit_list
-        )
+        logger.info(f"Workspace: найдено ОКС={len(workspace.capital_objects)}, ЗОУИТ={len(workspace.zouit)}")
         
-        logger.info(f"✅ Анализ завершен:")
-        logger.info(f"   - ОКС: {len(workspace.capital_objects)}")
-        logger.info(f"   - ЗОУИТ: {len(workspace.zouit)}")
+        # ✅ ДОБАВЛЕНО: Логирование площади после создания workspace
+        logger.info(f"🔍 Workspace: parcel.area = {workspace.parcel.area}")
+        logger.info(f"🔍 Workspace: parcel.geometry.area = {workspace.parcel.geometry.area:.2f}")
         
-        # ========== ШАГ 3: Создание структуры папок ========== #
-        logger.info("📁 Создание структуры папок...")
+        # ========== ШАГ 3: Создание рабочей директории ========== #
+        logger.info("Workspace: создание структуры папок")
         
         workspace_dir = create_workspace_directory(workspace.parcel.cadnum)
         project_base = get_project_base_dir(workspace_dir)
         
-        logger.info(f"✅ Создана: {workspace_dir.name}/")
-        logger.info(f"   └── База_проекта/")
-        
         # ========== ШАГ 4: Генерация MIF/MID файлов ========== #
-        logger.info("🗺️  Генерация слоев MapInfo...")
+        logger.info("Workspace: генерация MIF/MID")
         
-        # Участок
         create_parcel_mif(workspace.parcel, project_base)
-        logger.info("   ✅ участок.MIF")
-        
-        # Точки участка
         create_parcel_points_mif(workspace.parcel, project_base)
-        logger.info("   ✅ участок_точки.MIF")
+        create_building_zone_mif(workspace.building_zone, workspace.parcel.cadnum, project_base)
         
-        # Зона строительства
-        create_building_zone_mif(
-            workspace.building_zone,
-            workspace.parcel.cadnum,
-            project_base
-        )
-        logger.info("   ✅ зона_строительства.MIF")
+        has_oks = False
+        if workspace.capital_objects:
+            result_oks = create_oks_mif(workspace.capital_objects, project_base)
+            has_oks = result_oks is not None
         
-        # ОКС (если есть)
-        result_oks = create_oks_mif(workspace.capital_objects, project_base)
-        if result_oks:
-            logger.info(f"   ✅ окс.MIF ({len(workspace.capital_objects)} объектов)")
-        
-        # ЗОУИТ (если есть)
-        result_zouit = create_zouit_mif(workspace.zouit, project_base)
-        if result_zouit:
-            logger.info(f"   ✅ {len(result_zouit)} слоёв ЗОУИТ")
+        zouit_files = None
+        has_zouit_labels = False
+        if workspace.zouit:
+            zouit_files = create_zouit_mif(workspace.zouit, project_base)
             
-            # Подписи ЗОУИТ
-            if workspace.parcel.geometry:
+            # Создаем слой подписей ЗОУИТ
+            if zouit_files and workspace.parcel.geometry:
                 result_labels = create_zouit_labels_mif(
                     zouit_list=workspace.zouit,
                     parcel_geometry=workspace.parcel.geometry,
                     output_dir=project_base
                 )
-                if result_labels:
-                    logger.info("   ✅ зоуит_подписи.MIF")
+                has_zouit_labels = result_labels is not None
         
         # ========== ШАГ 5: Конвертация MIF → TAB ========== #
-        logger.info("🔄 Конвертация MIF → TAB...")
+        logger.info("Workspace: конвертация MIF → TAB")
         
         tab_files = convert_all_mif_to_tab(project_base, remove_mif=True, method='auto')
-        logger.info(f"✅ Конвертировано: {len(tab_files)} файлов")
+        logger.info(f"Workspace: конвертировано {len(tab_files)} файлов")
         
-        # ========== ШАГ 6: Создание WOR файла ========== #
-        logger.info("📝 Создание рабочего набора (WOR)...")
-        
-        has_oks = result_oks is not None
-        has_labels = result_zouit and workspace.parcel.geometry and result_labels
+        # ========== ШАГ 6: Создание WOR-файла ========== #
+        logger.info("Workspace: создание WOR-файла")
         
         wor_path = create_workspace_wor(
             workspace_dir=workspace_dir,
             cadnum=workspace.parcel.cadnum,
             has_oks=has_oks,
-            zouit_files=result_zouit,
-            has_zouit_labels=has_labels,
+            zouit_files=zouit_files,
+            has_zouit_labels=has_zouit_labels,
             address=workspace.parcel.address,
-            specialist_name="Автоматически сгенерировано",
+            area=workspace.parcel.area,  # ✅ ДОБАВЛЕНО: площадь из ЕГРН
+            specialist_name="Ляпина К.С.",
             zouit_list=workspace.zouit,
         )
         
-        logger.info(f"✅ {wor_path.name} создан")
+        logger.info(f"Workspace: WOR создан {wor_path.name}")
         
-        # ========== ШАГ 7: Упаковка в ZIP ========== #
-        logger.info("📦 Создание ZIP архива...")
+        # ========== ШАГ 7: Создание ZIP архива ========== #
+        logger.info("Workspace: упаковка в ZIP")
         
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            # Добавляем все файлы из workspace_dir
-            for file_path in workspace_dir.rglob('*'):
-                if file_path.is_file():
-                    # Относительный путь внутри ZIP
-                    arcname = file_path.relative_to(workspace_dir.parent)
-                    zip_file.write(file_path, arcname)
+            # Добавляем WOR-файл
+            zip_file.write(wor_path, wor_path.name)
+            
+            # Добавляем README
+            readme_path = workspace_dir / "README.txt"
+            if readme_path.exists():
+                zip_file.write(readme_path, "README.txt")
+            
+            # Добавляем все файлы из База_проекта
+            for file_path in project_base.glob("*.*"):
+                arcname = f"База_проекта/{file_path.name}"
+                zip_file.write(file_path, arcname)
         
         zip_buffer.seek(0)
         
-        # Формируем имя архива
-        safe_cadnum = workspace.parcel.cadnum.replace(':', '_')
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        zip_filename = f"GP_Graphics_{safe_cadnum}_{timestamp}.zip"
+        # Очистка временных файлов
+        try:
+            shutil.rmtree(workspace_dir)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временную папку: {e}")
         
-        logger.info(f"✅ ZIP архив создан: {zip_filename}")
-        logger.info(f"📊 Размер: {len(zip_buffer.getvalue()) / 1024:.2f} KB")
+        # Формируем имя ZIP файла
+        cadnum_safe = workspace.parcel.cadnum.replace(":", "-")
+        zip_filename = f"GP_Graphics_{cadnum_safe}.zip"
         
-        # ========== ШАГ 8: Возврат файла ========== #
+        logger.info(f"Workspace: отправка архива {zip_filename}")
+        
         return StreamingResponse(
             zip_buffer,
             media_type="application/zip",
@@ -208,21 +184,15 @@ async def generate_workspace(egrn_file: UploadFile = File(...)):
             }
         )
         
-    except HTTPException:
-        raise
-    
-    except Exception as e:
-        logger.exception(f"❌ Ошибка генерации рабочего набора: {e}")
+    except RuntimeError as ex:
+        logger.error(f"Workspace: ошибка генерации: {ex}")
         raise HTTPException(
             status_code=500,
-            detail=f"Ошибка генерации рабочего набора: {str(e)}"
+            detail=str(ex)
         )
-    
-    finally:
-        # Очистка временной директории
-        if workspace_dir and workspace_dir.exists():
-            try:
-                shutil.rmtree(workspace_dir)
-                logger.info(f"🗑️  Временная директория удалена: {workspace_dir.name}")
-            except Exception as e:
-                logger.warning(f"⚠️  Не удалось удалить {workspace_dir}: {e}")
+    except Exception as ex:
+        logger.exception(f"Workspace: неожиданная ошибка: {ex}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка создания рабочего набора: {str(ex)}"
+        )
