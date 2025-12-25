@@ -219,7 +219,8 @@ def create_workspace_wor(
     red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
     use_absolute_paths: bool = False,
     address: Optional[str] = None,           # Адрес участка из выписки ЕГРН
-    specialist_name: Optional[str] = None    # ФИО специалиста из учётки
+    specialist_name: Optional[str] = None,    # ФИО специалиста из учётки
+    area: Optional[float] = None
 ) -> Path:
     """
     Создать WOR-файл рабочего набора с правильными стилями и отчётами (Layout).
@@ -280,6 +281,7 @@ def create_workspace_wor(
         "ADDRESS": address or "",
         "DATE_DDMMYYYY": current_date,
         "SPECIALIST": specialist_name or "",
+        "AREA": f"{int(round(area))}" if area else "0",
     }
 
     # Если список легенды не передан, но есть workspace.zouit — собираем (name, registry_number)
@@ -330,7 +332,10 @@ def create_workspace_wor(
     if has_zouit_labels:
         map1_layers.append("зоуит_подписи")
 
-    # 5. Участок - самый верхний слой
+    # 5. Красные линии  # ← ДОБАВЬ ЭТО
+    map1_layers.append("Красные_линии")  # ← ДОБАВЬ ЭТО
+
+    # 6. Участок - самый верхний слой
     map1_layers.append("участок")
 
     map1_from_str = ",".join(map1_layers)
@@ -369,6 +374,9 @@ def create_workspace_wor(
     # Открываем слой подписей ЗОУИТ (если есть)
     if has_zouit_labels:
         wor_content += f'Open Table "{layers_subdir}\\\\зоуит_подписи.TAB" As зоуит_подписи Interactive\n'
+
+    # Открываем Красные линии с абсолютным путем
+    wor_content += 'Open Table "/home/gis_layers/Красные линии.TAB" As Красные_линии Interactive\n'
 
     # Открываем внешние слои для карты 2
     for layer_path in situation_layers:
@@ -448,6 +456,13 @@ Set Map
       Visibility On
 '''
         layer_index += 1
+
+    # ✅ СЛОЙ: Красные линии (СТИЛЬ ИЗ ИСХОДНОГО ФАЙЛА)
+    wor_content += f'''Set Map
+        Layer {layer_index}
+            Display Graphic
+    '''
+    layer_index += 1
 
     # ✅ СЛОЙ: Участок (КРАСНАЯ ЖИРНАЯ ЛИНИЯ)
     wor_content += f'''Set Map

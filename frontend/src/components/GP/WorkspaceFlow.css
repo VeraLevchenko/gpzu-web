@@ -1,0 +1,57 @@
+/* frontend/src/components/GP/WorkspaceFlow.css */
+
+.workspace-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  padding: 40px 20px;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto 32px;
+  flex-wrap: wrap;
+}
+
+.workspace-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #262626;
+  margin: 0;
+}
+
+.workspace-card {
+  max-width: 1000px;
+  margin: 0 auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 2px solid #90caf9;
+}
+
+.workspace-card .ant-btn-primary {
+  background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+  border: none;
+  height: 48px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.workspace-card .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(25, 118, 210, 0.3);
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .workspace-container {
+    padding: 20px 10px;
+  }
+
+  .workspace-header h1 {
+    font-size: 1.5rem;
+  }
+}

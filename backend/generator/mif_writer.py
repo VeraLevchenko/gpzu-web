@@ -133,6 +133,7 @@ def create_parcel_mif(
         
         cadnum = escape_mif_string(cadnum_safe)
         address = escape_mif_string(address_safe)
+        logger.info(f"📐 Площадь участка: {parcel_data.area} (тип: {type(parcel_data.area)})")
         area = format_mif_number(parcel_data.area)
         
         line = f'{cadnum},{address},{area}\n'

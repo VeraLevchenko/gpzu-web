@@ -9,7 +9,8 @@ import KaitenFlow from './components/GP/KaitenFlow';
 import MidMifFlow from './components/GP/MidMifFlow';
 import TuFlow from './components/GP/TuFlow';
 import GpFlow from './components/GP/GpFlow';
-import RefusalFlow from './components/GP/RefusalFlow';  // ← НОВОЕ
+import RefusalFlow from './components/GP/RefusalFlow'; 
+import WorkspaceFlow from './components/GP/WorkspaceFlow';
 import { authApi } from './services/api';
 
 const ProtectedRoute = ({ children }) => {
@@ -39,7 +40,8 @@ function App() {
           <Route path="/gp/midmif" element={<ProtectedRoute><MidMifFlow /></ProtectedRoute>} />
           <Route path="/gp/tu" element={<ProtectedRoute><TuFlow /></ProtectedRoute>} />
           <Route path="/gp/gradplan" element={<ProtectedRoute><GpFlow /></ProtectedRoute>} />
-          <Route path="/gp/refusal" element={<ProtectedRoute><RefusalFlow /></ProtectedRoute>} />  {/* ← НОВОЕ */}
+          <Route path="/gp/refusal" element={<ProtectedRoute><RefusalFlow /></ProtectedRoute>} />
+          <Route path="/gp/workspace" element={<WorkspaceFlow />} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

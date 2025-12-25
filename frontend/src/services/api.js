@@ -175,6 +175,26 @@ export const refusalApi = {
 };
 
 // ========================================
+// МОДУЛЬ: РАБОЧИЙ НАБОР MAPINFO
+// ========================================
+export const workspaceApi = {
+  // ИСПОЛЬЗУЕТ: парсинг ЕГРН встроен в endpoint
+  
+  // Генерация рабочего набора
+  generate: async (egrnFile) => {
+    const formData = new FormData();
+    formData.append('egrn_file', egrnFile);
+    
+    const response = await api.post('/api/gp/workspace/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+    });
+    
+    return response;
+  }
+};
+
+// ========================================
 // АУТЕНТИФИКАЦИЯ
 // ========================================
 export const authApi = {

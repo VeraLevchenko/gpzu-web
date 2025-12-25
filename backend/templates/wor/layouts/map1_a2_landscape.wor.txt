@@ -849,7 +849,7 @@ Layout
     Font ("Times New Roman CYR",2,8,0)
 
   Create Text
-    "Площадь участка - 742 кв.м"
+    "Площадь участка - {{AREA}} кв.м."
     (19,15.9736) (20.7632,16.1354)
     Font ("Times New Roman CYR",1,10,0)
     Justify Center

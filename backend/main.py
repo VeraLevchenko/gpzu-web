@@ -30,7 +30,9 @@ from api.gp.kaiten import router as kaiten_router
 from api.gp.midmif import router as midmif_router
 from api.gp.tu import router as tu_router
 from api.gp.gradplan import router as gradplan_router
-from api.gp.refusal import router as refusal_router  # ← НОВОЕ
+from api.gp.refusal import router as refusal_router
+from api.gp.workspace import router as workspace_router
+
 
 # ========================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -110,7 +112,8 @@ app.include_router(kaiten_router)      # Создание задач в Kaiten
 app.include_router(midmif_router)      # Подготовка MID/MIF
 app.include_router(tu_router)          # Формирование запросов ТУ
 app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
-app.include_router(refusal_router)     # ← НОВОЕ: Формирование отказов
+app.include_router(refusal_router)     #  Формирование отказов
+app.include_router(workspace_router)
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS

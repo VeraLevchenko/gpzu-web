@@ -6,7 +6,8 @@ import {
   DatabaseOutlined, 
   FileSearchOutlined, 
   FileTextOutlined,
-  CloseCircleOutlined 
+  CloseCircleOutlined,
+  FolderOpenOutlined 
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import UserHeader from '../components/Common/UserHeader';
@@ -143,6 +144,31 @@ const GP = () => {
                 block 
                 size="large" 
                 style={{ backgroundColor: '#f5222d', marginTop: 16 }}
+              >
+                Открыть
+              </Button>
+            </Card>
+          </Col>
+
+          {/* РАБОЧИЙ НАБОР - Синяя карточка */}
+          <Col xs={24} sm={12} lg={8}>
+            <Card 
+              hoverable 
+              className="gp-module-card" 
+              onClick={() => navigate('/gp/workspace')}
+            >
+              <div className="module-icon-container" style={{ backgroundColor: '#1890ff' }}>
+                <FolderOpenOutlined style={{ fontSize: 64, color: 'white' }} />
+              </div>
+              <h2 className="module-title">Рабочий набор MapInfo</h2>
+              <p className="module-description">
+                Автоматическая генерация рабочего набора MapInfo из выписки ЕГРН с архивом ZIP
+              </p>
+              <Button 
+                type="primary" 
+                block 
+                size="large" 
+                style={{ backgroundColor: '#1890ff', marginTop: 16 }}
               >
                 Открыть
               </Button>

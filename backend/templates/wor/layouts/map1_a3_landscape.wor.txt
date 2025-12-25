@@ -22,7 +22,7 @@ Layout
 (16.2979,0.2396)
 (16.2979,11.5306)
     Pen (2,2,0) 
-  Create Rect (7.0000,6.8035) (16.2063,9.2937)
+  Create Rect (9.0000,8.8035) (16.2063,9.2937)
     Pen (1,2,16777215) 
     Brush (2,16777215)
   Create Text
@@ -94,7 +94,7 @@ Layout
     Font ("Times New Roman CYR",2,8,0)
 
   Create Text
-    "Площадь участка - 742 кв.м"
+    "Площадь участка - {{AREA}} кв.м."
     (12.0389,11.0861) (13.8021,11.2479)
     Font ("Times New Roman CYR",1,10,0)
     Justify Center
