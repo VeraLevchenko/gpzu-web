@@ -11,10 +11,11 @@
 - ТУ: формирование запросов технических условий
 - ГПЗУ: подготовка градостроительных планов
 - ОТКАЗ: формирование отказов в выдаче ГПЗУ
-- WORKSPACE: создание рабочих наборов MapInfo  ← НОВОЕ
+- WORKSPACE: создание рабочих наборов MapInfo
 
 Общие сервисы:
 - Parsers: парсинг заявлений, ЕГРН, пространственный анализ
+- Database: управление журналами в PostgreSQL  ← НОВОЕ
 """
 
 import logging
@@ -32,7 +33,12 @@ from api.gp.midmif import router as midmif_router
 from api.gp.tu import router as tu_router
 from api.gp.gradplan import router as gradplan_router
 from api.gp.refusal import router as refusal_router
-from api.gp.workspace import router as workspace_router  # ← НОВОЕ
+from api.gp.workspace import router as workspace_router
+
+# Импорт CRUD роутеров для БД ← НОВОЕ
+from api.gp.applications_crud import router as applications_crud_router
+from api.gp.refusals_crud import router as refusals_crud_router
+from api.gp.tu_requests_crud import router as tu_requests_crud_router
 
 # ========================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -98,6 +104,20 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 FRONTEND_BUILD = Path(__file__).parent.parent / "frontend" / "build"
 
 # ========================================================================
+# ИНИЦИАЛИЗАЦИЯ БД ПРИ СТАРТЕ ← НОВОЕ
+# ========================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Инициализация базы данных при запуске приложения"""
+    try:
+        from database import init_db
+        init_db()
+        logger.info("✅ База данных инициализирована")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации БД: {e}")
+
+# ========================================================================
 # РЕГИСТРАЦИЯ API РОУТЕРОВ
 # ========================================================================
 
@@ -113,7 +133,12 @@ app.include_router(midmif_router)      # Подготовка MID/MIF
 app.include_router(tu_router)          # Формирование запросов ТУ
 app.include_router(gradplan_router, prefix="/api/gp/gradplan", tags=["gradplan"])  # ГПЗУ
 app.include_router(refusal_router)     # Формирование отказов
-app.include_router(workspace_router)   # ← НОВОЕ: Создание рабочих наборов MapInfo
+app.include_router(workspace_router)   # Создание рабочих наборов MapInfo
+
+# CRUD роутеры для управления журналами в БД ← НОВОЕ
+app.include_router(applications_crud_router)  # /api/gp/applications
+app.include_router(refusals_crud_router)      # /api/gp/refusals
+app.include_router(tu_requests_crud_router)   # /api/gp/tu-requests
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
@@ -139,7 +164,8 @@ async def health_check():
             "tu": "enabled",
             "gradplan": "enabled",
             "refusal": "enabled",
-            "workspace": "enabled",  # ← НОВОЕ
+            "workspace": "enabled",
+            "database": "enabled",  # ← НОВОЕ
         }
     }
 
@@ -193,10 +219,17 @@ async def api_info():
                 "endpoints": 2
             },
             {
-                "name": "Рабочий набор",  # ← НОВОЕ
+                "name": "Рабочий набор",
                 "prefix": "/api/gp/workspace",
                 "description": "Создание рабочих наборов MapInfo",
                 "endpoints": 1
+            },
+            # ← НОВОЕ
+            {
+                "name": "Журналы БД",
+                "prefix": "/api/gp/applications, /api/gp/refusals, /api/gp/tu-requests",
+                "description": "Управление журналами заявлений, отказов и запросов ТУ в PostgreSQL",
+                "endpoints": 15
             },
         ]
     }
