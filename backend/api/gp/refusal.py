@@ -2,7 +2,7 @@
 """
 API endpoints для формирования отказа в выдаче ГПЗУ.
 
-ОБНОВЛЕНО: Добавлена поддержка телефона и email заявителя
+ОБНОВЛЕНО (31.12.2024): Интеграция с БД
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -50,7 +50,25 @@ async def generate_refusal(request: Request):
     """
     Генерация документа отказа.
     
-    ОБНОВЛЕНО: Теперь принимает phone и email из application
+    Ожидает JSON:
+    {
+        "application": {
+            "number": "...",
+            "date": "...",
+            "applicant": "...",
+            "phone": "...",
+            "email": "..."
+        },
+        "egrn": {
+            "cadnum": "...",
+            "address": "...",
+            "area": "...",
+            "permitted_use": "..."
+        },
+        "reason_code": "NO_RIGHTS"
+    }
+    
+    ОБНОВЛЕНО: Теперь создает запись в БД (Application + Refusal)
     """
     try:
         data = await request.json()
@@ -67,40 +85,46 @@ async def generate_refusal(request: Request):
         
         reason_info = REFUSAL_REASONS[reason_code]
         
-        # Формируем контекст с поддержкой phone и email
+        # Формируем контекст для генератора
         context = {
             "app_number": application.get("number", "—"),
             "app_date": application.get("date", "—"),
             "applicant": application.get("applicant", "—"),
-            # === НОВЫЕ ПОЛЯ === #
             "phone": application.get("phone", "—"),
             "email": application.get("email", "—"),
-            # === ЕГРН === #
             "cadnum": egrn.get("cadnum", "—"),
             "address": egrn.get("address", "—"),
             "area": egrn.get("area", "—"),
             "permitted_use": egrn.get("permitted_use", "—"),
-            # === ПРИЧИНА === #
             "reason_code": reason_code,
             "reason_text": reason_info["text"],
             "reason_title": reason_info["title"],
         }
         
-        logger.info(f"Генерация отказа для {context['app_number']}, тел: {context['phone']}, email: {context['email']}")
+        logger.info(f"📝 Генерация отказа для заявления {context['app_number']}, причина: {reason_code}")
         
+        # Генерируем документ (теперь с записью в БД)
         docx_bytes, out_number, out_date = build_refusal_document(context)
         
         cadnum_safe = context["cadnum"].replace(":", "_")
         filename = f"Otkaz_{out_number}_{cadnum_safe}.docx"
+        
+        logger.info(f"✅ Отказ сформирован: исх. №{out_number} от {out_date}")
         
         return StreamingResponse(
             io.BytesIO(docx_bytes),
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
-        
+    
     except HTTPException:
         raise
     except Exception as ex:
-        logger.exception(f"Ошибка: {ex}")
+        logger.error(f"❌ Ошибка генерации отказа: {ex}")
         raise HTTPException(status_code=500, detail=str(ex))
+
+
+@router.get("/reasons")
+async def get_refusal_reasons():
+    """Получить список причин отказа"""
+    return REFUSAL_REASONS

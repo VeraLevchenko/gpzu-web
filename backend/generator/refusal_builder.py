@@ -2,16 +2,18 @@
 """
 Генератор документов отказов в выдаче ГПЗУ.
 
-ОБНОВЛЕНО (08.12.2024):
-- ✅ Добавлена поддержка phone и email
-- ✅ УБРАН STUB - используются ТОЛЬКО готовые шаблоны
-- ✅ Улучшена обработка ошибок и логирование
+ОБНОВЛЕНО (31.12.2024):
+- ✅ Запись в базу данных PostgreSQL
+- ✅ Автоматическое создание Application если не существует
+- ✅ Создание записи Refusal с вложением
+- ✅ Дублирование в Excel (для переходного периода)
+- ✅ Поддержка phone и email
 """
 
 from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 import logging
 
@@ -27,6 +29,10 @@ TEMPLATES_DIR = BASE_DIR / "templates" / "refusal"
 JOURNAL_PATH = BASE_DIR / "Журнал_регистрации_отказов.xlsx"
 JOURNAL_LOCK_PATH = BASE_DIR / "Журнал_регистрации_отказов.xlsx.lock"
 JOURNAL_SHEET_NAME = "Лист1"
+
+# Директория для вложений
+ATTACHMENTS_DIR = BASE_DIR / "uploads" / "attachments" / "refusals"
+ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Маппинг причин отказа на файлы шаблонов
 REASON_TEMPLATES = {
@@ -82,18 +88,6 @@ logger = logging.getLogger("gpzu-web.refusal_builder")
 def convert_date_format(date_str: str) -> str:
     """
     Конвертирует дату из формата «08» декабря 2025 г. в 08.12.2025
-    
-    Args:
-        date_str: Дата в формате «08» декабря 2025 г.
-    
-    Returns:
-        Дата в формате 08.12.2025
-    
-    Examples:
-        >>> convert_date_format("«15» ноября 2025 г.")
-        "15.11.2025"
-        >>> convert_date_format("15.11.2025")
-        "15.11.2025"
     """
     if not date_str:
         return "—"
@@ -110,22 +104,16 @@ def convert_date_format(date_str: str) -> str:
     }
     
     try:
-        # Извлекаем день из «15»
         day_part = date_str.split("«", 1)[1].split("»", 1)[0].strip()
-        day = day_part.zfill(2)  # Добавляем ведущий ноль если нужно
+        day = day_part.zfill(2)
         
-        # Извлекаем остальную часть: "ноября 2025 г."
         rest = date_str.split("»", 1)[1].strip()
-        
-        # Убираем "г." и разбиваем на слова
         rest = rest.replace("г.", "").replace("г", "").strip()
         parts = rest.split()
         
         if len(parts) >= 2:
             month_name = parts[0].lower()
             year = parts[1]
-            
-            # Получаем номер месяца
             month_num = months.get(month_name)
             
             if month_num and year:
@@ -134,109 +122,134 @@ def convert_date_format(date_str: str) -> str:
     except Exception as ex:
         logger.warning(f"⚠️ Не удалось конвертировать дату '{date_str}': {ex}")
     
-    # Если не удалось распарсить, возвращаем как есть
     return date_str
 
 
-# ================ ОСНОВНАЯ ФУНКЦИЯ ================ #
-
-def build_refusal_document(context: Dict[str, Any]) -> Tuple[bytes, str, str]:
+def get_or_create_application(context: Dict[str, Any], db_session) -> int:
     """
-    Формирует документ отказа в выдаче ГПЗУ с автоматической регистрацией в журнале Excel.
+    Находит существующее заявление или создает новое.
     
     Args:
-        context: Словарь с данными:
-            - app_number: номер заявления
-            - app_date: дата заявления
-            - applicant: заявитель (ФИО или название организации)
-            - phone: телефон заявителя (НОВОЕ)
-            - email: email заявителя (НОВОЕ)
-            - cadnum: кадастровый номер земельного участка
-            - address: адрес участка
-            - area: площадь участка (кв.м)
-            - permitted_use: вид разрешённого использования
-            - reason_code: код причины отказа (NO_RIGHTS, NO_BORDERS, и т.д.)
+        context: Данные заявления
+        db_session: Сессия БД
     
     Returns:
-        Tuple[docx_bytes, out_number, out_date] - байты документа, исходящий номер, дата
-    
-    Raises:
-        FileNotFoundError: Если шаблон или журнал не найден
-        RuntimeError: Если журнал открыт в другой программе или проблемы с записью
+        ID заявления (application_id)
     """
+    from models.application import Application
     
-    app_number = context.get('app_number', 'б/н')
-    reason_code = context.get("reason_code", "NO_RIGHTS")
+    app_number = context.get('app_number', '')
     
-    logger.info(f"📝 Генерация отказа для заявления {app_number}, причина: {reason_code}")
+    # Ищем существующее заявление
+    existing = db_session.query(Application).filter(Application.number == app_number).first()
     
-    # Проверяем наличие журнала
+    if existing:
+        logger.info(f"✅ Найдено существующее заявление #{app_number} (ID: {existing.id})")
+        return existing.id
+    
+    # Создаем новое заявление
+    logger.info(f"📝 Создаем новое заявление #{app_number}")
+    
+    application = Application(
+        number=app_number,
+        date=convert_date_format(context.get('app_date', '')),
+        applicant=context.get('applicant', ''),
+        phone=context.get('phone', ''),
+        email=context.get('email', ''),
+        cadnum=context.get('cadnum', ''),
+        address=context.get('address', ''),
+        area=float(context.get('area', 0)) if context.get('area') else None,
+        permitted_use=context.get('permitted_use', ''),
+        status='in_progress'
+    )
+    
+    db_session.add(application)
+    db_session.flush()  # Получаем ID без commit
+    
+    logger.info(f"✅ Заявление создано (ID: {application.id})")
+    return application.id
+
+
+def save_to_database(
+    context: Dict[str, Any],
+    out_number: int,
+    out_date: str,
+    attachment_path: str,
+    db_session
+) -> Optional[int]:
+    """
+    Сохраняет отказ в базу данных.
+    
+    Args:
+        context: Контекст с данными отказа
+        out_number: Исходящий номер
+        out_date: Исходящая дата
+        attachment_path: Путь к файлу вложения
+        db_session: Сессия БД
+    
+    Returns:
+        ID созданной записи Refusal или None при ошибке
+    """
+    try:
+        from models.refusal import Refusal
+        
+        # Получаем или создаем заявление
+        application_id = get_or_create_application(context, db_session)
+        
+        # Извлекаем год из даты
+        try:
+            year = int(out_date.split('.')[-1])
+        except:
+            year = datetime.now().year
+        
+        # Создаем запись отказа
+        refusal = Refusal(
+            application_id=application_id,
+            out_number=out_number,
+            out_date=out_date,
+            out_year=year,
+            reason_code=context.get('reason_code', 'NO_RIGHTS'),
+            reason_text=REASON_TEXTS.get(context.get('reason_code', 'NO_RIGHTS'), ''),
+            attachment=attachment_path,
+        )
+        
+        db_session.add(refusal)
+        db_session.flush()  # Получаем ID
+        
+        refusal_id = refusal.id
+        
+        # Обновляем статус заявления
+        from models.application import Application
+        app = db_session.query(Application).filter(Application.id == application_id).first()
+        if app:
+            app.status = 'refused'
+        
+        db_session.commit()
+        
+        logger.info(f"✅ Отказ №{out_number} сохранен в БД (ID: {refusal_id}, Application ID: {application_id})")
+        return refusal_id
+        
+    except Exception as ex:
+        logger.error(f"❌ Ошибка сохранения в БД: {ex}")
+        db_session.rollback()
+        return None
+
+
+def write_to_excel_journal(context: Dict[str, Any], out_number: int, out_date: str) -> bool:
+    """
+    Дублирует запись в Excel журнал (для переходного периода).
+    """
     if not JOURNAL_PATH.exists():
-        raise FileNotFoundError(
-            f"❌ Журнал регистрации отказов не найден: {JOURNAL_PATH}\n"
-            f"Создайте Excel файл с колонками: "
-            f"Исходящий номер | Исходящая дата | Номер заявления | "
-            f"Дата заявления | Заявитель | Кадастровый номер | Причина отказа"
-        )
-    
-    # Определяем шаблон по причине отказа
-    template_filename = REASON_TEMPLATES.get(reason_code, "refusal_no_rights.docx")
-    template_path = TEMPLATES_DIR / template_filename
-    
-    # === КРИТИЧНО: Проверяем существование шаблона === #
-    if not template_path.exists():
-        # Формируем понятное сообщение об ошибке
-        available_templates = [f.name for f in TEMPLATES_DIR.glob("*.docx")] if TEMPLATES_DIR.exists() else []
-        
-        error_msg = (
-            f"❌ ШАБЛОН ОТКАЗА НЕ НАЙДЕН!\n\n"
-            f"Причина отказа: {reason_code}\n"
-            f"Ожидаемый файл: {template_filename}\n"
-            f"Полный путь: {template_path}\n\n"
-        )
-        
-        if available_templates:
-            error_msg += f"Доступные шаблоны в папке:\n"
-            for tmpl in available_templates:
-                error_msg += f"  • {tmpl}\n"
-        else:
-            error_msg += f"Папка с шаблонами пуста или не существует: {TEMPLATES_DIR}\n"
-        
-        error_msg += (
-            f"\n💡 Решение:\n"
-            f"1. Убедитесь что файл {template_filename} существует\n"
-            f"2. Проверьте путь: {TEMPLATES_DIR}\n"
-            f"3. Проверьте права доступа к файлу"
-        )
-        
-        raise FileNotFoundError(error_msg)
-    
-    logger.info(f"✅ Используется шаблон: {template_filename}")
-    
-    # === РАБОТА С ЖУРНАЛОМ EXCEL === #
+        logger.info("ℹ️ Excel журнал не найден, пропускаем дублирование")
+        return False
     
     lock = FileLock(str(JOURNAL_LOCK_PATH), timeout=10)
     
     try:
         with lock:
-            # Открываем журнал
-            try:
-                wb = load_workbook(JOURNAL_PATH)
-            except PermissionError:
-                raise RuntimeError(
-                    "❌ ЖУРНАЛ ОТКРЫТ В ДРУГОЙ ПРОГРАММЕ!\n\n"
-                    "Закройте Excel файл и попробуйте снова."
-                )
-            
-            if JOURNAL_SHEET_NAME not in wb.sheetnames:
-                raise RuntimeError(
-                    f"❌ Лист '{JOURNAL_SHEET_NAME}' не найден в журнале.\n"
-                    f"Доступные листы: {', '.join(wb.sheetnames)}"
-                )
-            
+            wb = load_workbook(JOURNAL_PATH)
             ws = wb[JOURNAL_SHEET_NAME]
             
-            # Находим столбцы по заголовкам
             headers = {cell.value: cell.column for cell in ws[1] if cell.value}
             
             required_columns = {
@@ -250,130 +263,176 @@ def build_refusal_document(context: Dict[str, Any]) -> Tuple[bytes, str, str]:
             }
             
             columns = {}
-            missing = []
-            
             for col_name, var_name in required_columns.items():
                 col_index = headers.get(col_name)
                 if col_index:
                     columns[var_name] = col_index
-                else:
-                    missing.append(col_name)
             
-            if missing:
-                raise RuntimeError(
-                    f"❌ В журнале отсутствуют обязательные столбцы:\n"
-                    f"{', '.join(missing)}\n\n"
-                    f"Найденные столбцы: {', '.join(headers.keys())}"
-                )
-            
-            # Находим максимальный исходящий номер
-            max_num = 0
-            for row in range(2, ws.max_row + 1):
-                val = ws.cell(row=row, column=columns["col_out_num"]).value
-                if val is None:
-                    continue
-                try:
-                    n = int(str(val).strip())
-                    if n > max_num:
-                        max_num = n
-                except (ValueError, AttributeError):
-                    continue
-            
-            # Присваиваем новый номер
-            out_number = max_num + 1
-            out_date = datetime.now().strftime("%d.%m.%Y")
-            
-            # Добавляем новую строку в журнал
             new_row = ws.max_row + 1
-            ws.cell(row=new_row, column=columns["col_out_num"], value=out_number)
-            ws.cell(row=new_row, column=columns["col_out_date"], value=out_date)
-            ws.cell(row=new_row, column=columns["col_app_num"], value=context.get("app_number", ""))
-            ws.cell(row=new_row, column=columns["col_app_date"], value=convert_date_format(context.get("app_date", "")))  # === ИЗМЕНЕНО === #
-            ws.cell(row=new_row, column=columns["col_applicant"], value=context.get("applicant", ""))
-            ws.cell(row=new_row, column=columns["col_cadnum"], value=context.get("cadnum", ""))
-            ws.cell(row=new_row, column=columns["col_reason"], value=reason_code)
+            ws.cell(row=new_row, column=columns.get("col_out_num", 1), value=out_number)
+            ws.cell(row=new_row, column=columns.get("col_out_date", 2), value=out_date)
+            ws.cell(row=new_row, column=columns.get("col_app_num", 3), value=context.get("app_number", ""))
+            ws.cell(row=new_row, column=columns.get("col_app_date", 4), value=convert_date_format(context.get("app_date", "")))
+            ws.cell(row=new_row, column=columns.get("col_applicant", 5), value=context.get("applicant", ""))
+            ws.cell(row=new_row, column=columns.get("col_cadnum", 6), value=context.get("cadnum", ""))
+            ws.cell(row=new_row, column=columns.get("col_reason", 7), value=context.get("reason_code", ""))
             
-            # Сохраняем журнал
-            try:
-                wb.save(JOURNAL_PATH)
-                logger.info(f"✅ Отказ зарегистрирован в журнале: исх. №{out_number} от {out_date}")
-            except PermissionError:
-                raise RuntimeError(
-                    "❌ Не удалось сохранить журнал!\n"
-                    "Закройте Excel и повторите попытку."
-                )
-            except OSError as ex:
-                raise RuntimeError(f"❌ Ошибка сохранения журнала: {ex}")
-    
-    except Timeout:
-        raise RuntimeError(
-            "⏳ ЖУРНАЛ ИСПОЛЬЗУЕТСЯ ДРУГИМ ПРОЦЕССОМ\n\n"
-            "Подождите несколько секунд и попробуйте снова."
-        )
-    
-    # === ФОРМИРОВАНИЕ ДОКУМЕНТА ИЗ ШАБЛОНА === #
-    
-    # Подготавливаем контекст для шаблона
-    template_context = {
-        "OUT_NUM": str(out_number),
-        "OUT_DATE": out_date,
-        "APP_NUMBER": context.get("app_number", "—"),
-        "APP_DATE": convert_date_format(context.get("app_date", "—")),  # === ИЗМЕНЕНО: конвертируем формат === #
-        "APPLICANT": context.get("applicant", "—"),
-        "PHONE": context.get("phone", "—"),          # === НОВОЕ ПОЛЕ === #
-        "EMAIL": context.get("email", "—"),          # === НОВОЕ ПОЛЕ === #
-        "CADNUM": context.get("cadnum", "—"),
-        "ADDRESS": context.get("address", "—"),
-        "AREA": context.get("area", "—"),
-        "PERMITTED_USE": context.get("permitted_use", "—"),
-        "REASON_TEXT": REASON_TEXTS.get(reason_code, "Причина отказа не указана"),
-    }
-    
-    logger.info(
-        f"📋 Данные для шаблона: "
-        f"заявитель={template_context['APPLICANT']}, "
-        f"тел={template_context['PHONE']}, "
-        f"email={template_context['EMAIL']}"
-    )
-    
-    # Рендерим шаблон
-    try:
-        tpl = DocxTemplate(str(template_path))
-        tpl.render(template_context)
+            wb.save(JOURNAL_PATH)
+            logger.info(f"✅ Отказ №{out_number} продублирован в Excel")
+            return True
+            
     except Exception as ex:
-        raise RuntimeError(
-            f"❌ Ошибка при рендеринге шаблона {template_filename}: {ex}\n\n"
-            f"Проверьте корректность переменных в шаблоне."
-        )
-    
-    # Сохраняем в bytes
-    bio = BytesIO()
-    tpl.save(bio)
-    bio.seek(0)
-    
-    logger.info(f"✅ Документ отказа успешно сформирован (исх. №{out_number})")
-    
-    return bio.getvalue(), str(out_number), out_date
+        logger.warning(f"⚠️ Не удалось записать в Excel: {ex}")
+        return False
 
 
-# ================ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ================ #
+# ================ ОСНОВНАЯ ФУНКЦИЯ ================ #
 
-def validate_templates() -> Dict[str, bool]:
+def build_refusal_document(context: Dict[str, Any]) -> Tuple[bytes, str, str]:
     """
-    Проверяет наличие всех необходимых шаблонов.
+    Формирует документ отказа в выдаче ГПЗУ с регистрацией в БД и Excel.
+    
+    ОБНОВЛЕНО (31.12.2024): Теперь записывает в БД + создает Application + сохраняет файл.
+    
+    Args:
+        context: Словарь с данными отказа
     
     Returns:
-        Словарь {код_причины: существует_шаблон}
+        Tuple[docx_bytes, out_number, out_date] - байты документа, исходящий номер, дата
     
-    Example:
-        >>> validate_templates()
-        {
-            'NO_RIGHTS': True,
-            'NO_BORDERS': True,
-            'NOT_IN_CITY': False,
-            ...
-        }
+    Raises:
+        FileNotFoundError: Если шаблон не найден
+        RuntimeError: Проблемы с генерацией
     """
+    
+    app_number = context.get('app_number', 'б/н')
+    reason_code = context.get("reason_code", "NO_RIGHTS")
+    
+    logger.info(f"📝 Генерация отказа для заявления {app_number}, причина: {reason_code}")
+    
+    # Проверяем шаблон
+    template_filename = REASON_TEMPLATES.get(reason_code, "refusal_no_rights.docx")
+    template_path = TEMPLATES_DIR / template_filename
+    
+    if not template_path.exists():
+        available_templates = [f.name for f in TEMPLATES_DIR.glob("*.docx")] if TEMPLATES_DIR.exists() else []
+        error_msg = (
+            f"❌ ШАБЛОН ОТКАЗА НЕ НАЙДЕН!\n\n"
+            f"Причина отказа: {reason_code}\n"
+            f"Ожидаемый файл: {template_filename}\n"
+            f"Полный путь: {template_path}\n\n"
+        )
+        if available_templates:
+            error_msg += f"Доступные шаблоны в папке:\n"
+            for tmpl in available_templates:
+                error_msg += f"  • {tmpl}\n"
+        else:
+            error_msg += f"Папка с шаблонами пуста или не существует: {TEMPLATES_DIR}\n"
+        error_msg += (
+            f"\n💡 Решение:\n"
+            f"1. Убедитесь что файл {template_filename} существует\n"
+            f"2. Проверьте путь: {TEMPLATES_DIR}\n"
+            f"3. Проверьте права доступа к файлу"
+        )
+        raise FileNotFoundError(error_msg)
+    
+    logger.info(f"✅ Используется шаблон: {template_filename}")
+    
+    # ========== ШАГ 1: ПОЛУЧАЕМ ИСХОДЯЩИЙ НОМЕР ИЗ БД ========== #
+    
+    from database import SessionLocal
+    from models.refusal import get_next_refusal_number
+    
+    db = SessionLocal()
+    
+    try:
+        current_year = datetime.now().year
+        out_number = get_next_refusal_number(db, year=current_year)
+        out_date = datetime.now().strftime("%d.%m.%Y")
+        
+        logger.info(f"📋 Присвоен исходящий номер: {out_number} от {out_date}")
+        
+        # ========== ШАГ 2: ФОРМИРУЕМ ДОКУМЕНТ ========== #
+        
+        template_context = {
+            "OUT_NUM": str(out_number),
+            "OUT_DATE": out_date,
+            "APP_NUMBER": context.get("app_number", "—"),
+            "APP_DATE": convert_date_format(context.get("app_date", "—")),
+            "APPLICANT": context.get("applicant", "—"),
+            "PHONE": context.get("phone", "—"),
+            "EMAIL": context.get("email", "—"),
+            "CADNUM": context.get("cadnum", "—"),
+            "ADDRESS": context.get("address", "—"),
+            "AREA": context.get("area", "—"),
+            "PERMITTED_USE": context.get("permitted_use", "—"),
+            "REASON_TEXT": REASON_TEXTS.get(reason_code, "Причина отказа не указана"),
+        }
+        
+        logger.info(
+            f"📋 Данные для шаблона: "
+            f"заявитель={template_context['APPLICANT']}, "
+            f"тел={template_context['PHONE']}, "
+            f"email={template_context['EMAIL']}"
+        )
+        
+        tpl = DocxTemplate(str(template_path))
+        tpl.render(template_context)
+        
+        doc_buffer = BytesIO()
+        tpl.save(doc_buffer)
+        doc_buffer.seek(0)
+        docx_bytes = doc_buffer.read()
+        
+        logger.info(f"📄 Документ сформирован ({len(docx_bytes)} байт)")
+        
+        # ========== ШАГ 3: СОХРАНЯЕМ ФАЙЛ КАК ВЛОЖЕНИЕ ========== #
+        
+        cadnum_safe = context.get("cadnum", "unknown").replace(":", "_")
+        filename = f"otkaz_{out_number}_{cadnum_safe}.docx"
+        file_path = ATTACHMENTS_DIR / filename
+        
+        with open(file_path, "wb") as f:
+            f.write(docx_bytes)
+        
+        logger.info(f"💾 Файл сохранен: {file_path}")
+        
+        # ========== ШАГ 4: ЗАПИСЫВАЕМ В БД (Application + Refusal) ========== #
+        
+        refusal_id = save_to_database(
+            context=context,
+            out_number=out_number,
+            out_date=out_date,
+            attachment_path=str(file_path),
+            db_session=db
+        )
+        
+        if refusal_id:
+            logger.info(f"✅ Запись в БД создана (Refusal ID: {refusal_id})")
+        else:
+            logger.warning("⚠️ Не удалось создать запись в БД")
+        
+        # ========== ШАГ 5: ДУБЛИРУЕМ В EXCEL (ОПЦИОНАЛЬНО) ========== #
+        
+        write_to_excel_journal(context, out_number, out_date)
+        
+        # ========== ВОЗВРАЩАЕМ РЕЗУЛЬТАТ ========== #
+        
+        logger.info(f"✅ Документ отказа успешно сформирован (исх. №{out_number})")
+        
+        return docx_bytes, str(out_number), out_date
+        
+    except Exception as ex:
+        db.rollback()
+        raise RuntimeError(f"Ошибка генерации отказа: {ex}")
+    finally:
+        db.close()
+
+
+# ================ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПРОВЕРКИ ================ #
+
+def validate_templates() -> Dict[str, bool]:
+    """Проверяет наличие всех необходимых шаблонов."""
     result = {}
     for reason_code, template_filename in REASON_TEMPLATES.items():
         template_path = TEMPLATES_DIR / template_filename
@@ -382,16 +441,7 @@ def validate_templates() -> Dict[str, bool]:
 
 
 def get_missing_templates() -> list:
-    """
-    Возвращает список отсутствующих шаблонов.
-    
-    Returns:
-        Список имён файлов отсутствующих шаблонов
-    
-    Example:
-        >>> get_missing_templates()
-        ['refusal_not_in_city.docx', 'refusal_has_active_gp.docx']
-    """
+    """Возвращает список отсутствующих шаблонов."""
     missing = []
     for reason_code, template_filename in REASON_TEMPLATES.items():
         template_path = TEMPLATES_DIR / template_filename
@@ -401,12 +451,7 @@ def get_missing_templates() -> list:
 
 
 def get_templates_status() -> str:
-    """
-    Возвращает текстовый отчёт о статусе шаблонов.
-    
-    Returns:
-        Многострочная строка с информацией о шаблонах
-    """
+    """Возвращает текстовый отчёт о статусе шаблонов."""
     lines = []
     lines.append("=" * 60)
     lines.append("СТАТУС ШАБЛОНОВ ОТКАЗОВ")
@@ -439,6 +484,5 @@ def get_templates_status() -> str:
     return "\n".join(lines)
 
 
-# Для тестирования из командной строки
 if __name__ == "__main__":
     print(get_templates_status())
