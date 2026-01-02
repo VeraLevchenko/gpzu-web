@@ -23,6 +23,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from datetime import datetime
 import logging
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +257,7 @@ def create_workspace_wor(
     has_zouit_labels: bool = False,
     zouit_legend_items: Optional[List[Tuple[str, str]]] = None,
     zouit_list: Optional[list] = None,  # данные workspace.zouit для легенды
-    red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
+    red_lines_path: str = None,
     use_absolute_paths: bool = False,
     address: Optional[str] = None,           # Адрес участка из выписки ЕГРН
     specialist_name: Optional[str] = None,    # ФИО специалиста из учётки
@@ -300,6 +304,14 @@ def create_workspace_wor(
 
     # Относительный путь к папке со слоями
     layers_subdir = "База_проекта"
+
+    if red_lines_path is None:
+        red_lines_path = os.getenv("RED_LINES_PATH")
+
+    layer_labels = os.getenv("LAYER_LABELS")
+    layer_roads = os.getenv("LAYER_ROADS")
+    layer_buildings = os.getenv("LAYER_BUILDINGS")
+    layer_actual_land = os.getenv("LAYER_ACTUAL_LAND")
 
     # Текущая дата для штампа
     current_date = datetime.now().strftime("%d.%m.%Y")
@@ -419,11 +431,11 @@ def create_workspace_wor(
     # Открываем красные линии
     wor_content += f'Open Table "{red_lines_path}" As Красные_линии Interactive\n'
 
-    # Открываем внешние слои для карты 2
-    for layer_path in situation_layers:
-        if layer_path.exists():
-            layer_name = layer_path.stem
-            wor_content += f'Open Table "{layer_path}" As {layer_name} Interactive\n'
+    # Открываем внешние слои для карты 2 (серверные пути из .env)
+    wor_content += f'Open Table "{layer_labels}" As Подписи Interactive\n'
+    wor_content += f'Open Table "{layer_roads}" As Проезды Interactive\n'
+    wor_content += f'Open Table "{layer_buildings}" As Строения Interactive\n'
+    wor_content += f'Open Table "{layer_actual_land}" As ACTUAL_LAND Interactive\n'
 
     # ========== КАРТА 1: Градостроительный план ========== #
 

@@ -150,6 +150,8 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
         print(f"⊘  ОКС пропущены (нет данных или геометрии)")
     
     result_zouit = create_zouit_mif(workspace.zouit, project_base)
+    result_labels = None  # Инициализация
+    
     if result_zouit:
         print(f"✅ Создано отдельных слоёв ЗОУИТ: {len(result_zouit)}")
         for i, (mif, mid) in enumerate(result_zouit, start=1):
@@ -268,7 +270,7 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
 
 
 if __name__ == "__main__":
-    test_file = "/home/gpzu-web/backend/uploads/магазин лесная 14.xml"
+    test_file = "/home/vs/gpzu-web/backend/uploads/42_30_0303090_961 ЗУ.xml"
     
     if len(sys.argv) > 1:
         test_file = sys.argv[1]

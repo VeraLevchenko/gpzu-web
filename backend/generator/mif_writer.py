@@ -685,7 +685,7 @@ def create_workspace_directory(cadnum: str) -> Path:
     dir_name = f"GP_Graphics_{safe_cadnum}"
     
     # Создаём корневую директорию
-    base_dir = Path("/home/gpzu-web/backend/temp/workspace") / dir_name
+    base_dir = TEMP_DIR / dir_name
     base_dir.mkdir(parents=True, exist_ok=True)
     
     # Создаём подпапку "База проекта"
