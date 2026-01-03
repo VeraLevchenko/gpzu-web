@@ -1,4 +1,3 @@
-# backend/api/gp/workspace.py
 """
 API endpoints для создания рабочего набора MapInfo.
 
@@ -11,7 +10,7 @@ API endpoints для создания рабочего набора MapInfo.
 - Скачивание ZIP архива
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 import logging
 import io
@@ -33,6 +32,7 @@ from generator.mif_writer import (
 )
 from generator.mif_to_tab_converter import convert_all_mif_to_tab
 from generator.wor_builder import create_workspace_wor
+from api.auth import verify_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,10 @@ router = APIRouter(prefix="/api/gp/workspace", tags=["workspace"])
 
 
 @router.post("/create")
-async def create_workspace(file: UploadFile = File(...)):
+async def create_workspace(
+    file: UploadFile = File(...),
+    user: dict  = Depends(verify_credentials),
+):
     """
     Создание полного рабочего набора MapInfo из выписки ЕГРН.
     
@@ -137,7 +140,7 @@ async def create_workspace(file: UploadFile = File(...)):
             has_zouit_labels=has_zouit_labels,
             address=workspace.parcel.address,
             area=workspace.parcel.area,  # ✅ ДОБАВЛЕНО: площадь из ЕГРН
-            specialist_name="Ляпина К.С.",
+            specialist_name=(user.get("fio") or user.get("username") or ""),
             zouit_list=workspace.zouit,
         )
         

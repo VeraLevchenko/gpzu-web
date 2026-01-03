@@ -9,7 +9,7 @@ security = HTTPBasic()
 
 USERS_FILE = Path(__file__).parent.parent / "users.txt"
 
-def load_users() -> Dict[str, str]:
+def load_users() -> Dict[str, dict]:
     """Загружает пользователей из файла"""
     users = {}
     if USERS_FILE.exists():
@@ -21,7 +21,12 @@ def load_users() -> Dict[str, str]:
                     if len(parts) >= 2:
                         username = parts[0]
                         password = parts[1]
-                        users[username] = password
+                        fio = parts[2] if len(parts) >= 3 else username  # ✅ ВОТ ЭТОЙ СТРОКИ НЕ ХВАТАЛО
+
+                        users[username] = {
+                            "password": password,
+                            "fio": fio,
+                        }
     return users
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)) -> str:
@@ -35,7 +40,8 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)) ->
             headers={"WWW-Authenticate": "Basic"},
         )
     
-    stored_password = users[credentials.username]
+    user = users[credentials.username]
+    stored_password = user["password"]
     
     is_correct_password = secrets.compare_digest(
         credentials.password.encode("utf8"),
@@ -49,7 +55,11 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)) ->
             headers={"WWW-Authenticate": "Basic"},
         )
     
-    return credentials.username
+    return {
+    "username": credentials.username,
+    "fio": user["fio"],
+    }
+
 
 @router.get("/me")
 async def get_current_user(username: str = Depends(verify_credentials)):
