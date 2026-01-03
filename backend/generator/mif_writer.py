@@ -120,10 +120,57 @@ def create_parcel_mif(
         w('  Площадь Float\n')
         w('Data\n\n')
         
-        w('Region  1\n')
-        w(f'  {len(coords)}\n')
-        for x, y in coords:
-            w(f'{x} {y}\n')
+        
+        # --- МНОГОКОНТУРНЫЙ УЧАСТОК: убираем "перемычки" ---
+        # ВАЖНО: порядок coords НЕ меняем (это критично для нумерации точек в create_parcel_points_mif).
+        # Здесь мы только "разрезаем" список координат на контуры по замыканию (повтор первой точки в конце контура)
+        # и пишем Region N с N частями, как в корректном примере MIF.
+
+        def _split_contours_by_closure(points):
+            if not points:
+                return []
+
+            contours = []
+            current = []
+            first = None
+
+            for pt in points:
+                if first is None:
+                    first = pt
+                current.append(pt)
+
+                # Контур замкнулся (последняя точка равна первой) и это не "псевдозамыкание" из 2 точек
+                if len(current) >= 4 and current[-1] == first:
+                    # Не удаляем последнюю точку: MapInfo нормально принимает замкнутые кольца,
+                    # а мы не рискуем нарушить исходный порядок/геометрию.
+                    contours.append(current)
+                    current = []
+                    first = None
+
+            # если остался незамкнутый хвост — считаем его отдельным контуром
+            if current:
+                contours.append(current)
+
+            # фильтруем мусор (контур должен быть минимум из 3 точек)
+            return [c for c in contours if len(c) >= 3]
+
+        contours = _split_contours_by_closure(coords)
+
+        if len(contours) <= 1:
+            # как раньше: один контур
+            w('Region  1\n')
+            w(f'  {len(coords)}\n')
+            for x, y in coords:
+                w(f'{x} {y}\n')
+        else:
+            # несколько контуров: Region N + блок точек для каждого контура
+            w(f'Region  {len(contours)}\n')
+            for c in contours:
+                w(f'  {len(c)}\n')
+                for x, y in c:
+                    w(f'{x} {y}\n')
+
+
         w('    Pen (1,2,0)\n')
         w('    Brush (1,0,16777215)\n')
     

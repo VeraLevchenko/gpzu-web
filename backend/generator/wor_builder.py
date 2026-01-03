@@ -25,6 +25,7 @@ from datetime import datetime
 import logging
 import os
 from dotenv import load_dotenv
+from generator.zouit_styles import (get_zouit_style, style_to_layer_global, style_to_legend_rect,)
 
 load_dotenv()
 
@@ -206,18 +207,26 @@ def _build_zouit_legend_block(
 
         # прямоугольник центрируем по высоте блока текста
         y_rect = y + (block_h - rect_h) / 2
+        
+        # === ДОБАВЛЕНО: стиль из справочника ЗОУИТ ===
+        style = get_zouit_style(name)
+        pen_line, brush_line = style_to_legend_rect(style)
+
 
         # --- прямоугольник-образец (в колонке существующих образцов) ---
         out.append(
             """  Create Rect ({x1},{y1}) ({x2},{y2})
-    Pen (1,2,0)
-    Brush (2,16777215)""".format(
+    {pen}
+    {brush}""".format(
                 x1=round(symbol_left, 4),
                 y1=round(y_rect, 4),
                 x2=round(symbol_left + rect_w, 4),
                 y2=round(y_rect + rect_h, 4),
+                pen=pen_line,
+                brush=brush_line,
             )
         )
+
 
         # --- текст справа, строго в рамке легенды ---
         out.append(
@@ -492,15 +501,22 @@ map1WindowID = FrontWindow()
 '''
     layer_index += 1
 
-    # ✅ СЛОИ: ЗОУИТ (ЧЁРНЫЕ ЛИНИИ БЕЗ ЗАЛИВКИ, БЕЗ ПОДПИСЕЙ)
-    if zouit_files:
-        for i, (mif_path, _) in enumerate(zouit_files):
-            wor_content += f'''Set Map
+    
+    # ЗОУИТ — индивидуальные стили из справочника
+    if zouit_files and zouit_list:
+      for i, (mif_path, _) in enumerate(zouit_files):
+          z = zouit_list[i]
+          zouit_name = getattr(z, "name", "") or ""
+          style = get_zouit_style(zouit_name)
+          style_global = style_to_layer_global(style)
+ 
+          wor_content += f'''Set Map
   Layer {layer_index}
-    Display Global
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-'''
-            layer_index += 1
+      Display Global
+      {style_global} Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+  '''
+          layer_index += 1
+
 
     # ✅ СЛОЙ: Подписи ЗОУИТ (НЕВИДИМЫЕ ТОЧКИ С ПОДПИСЯМИ)
     if has_zouit_labels:
