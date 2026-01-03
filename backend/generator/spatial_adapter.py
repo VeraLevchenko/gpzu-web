@@ -23,6 +23,7 @@ from models.gp_data import GPData, ParcelInfo
 from utils.spatial_analysis import perform_spatial_analysis
 from generator.geometry_builder import create_building_zone
 from parsers.egrn_parser import EGRNData
+from utils.coords import renumber_egrn_contours
 
 logger = logging.getLogger(__name__)
 
@@ -50,26 +51,29 @@ def create_workspace_from_egrn(egrn_data: EGRNData) -> WorkspaceData:
     # ========== ШАГ 1: Преобразование координат ========== #
     
     coordinates = _convert_egrn_coordinates(egrn_data.coordinates)
-    
     if not coordinates or len(coordinates) < 3:
-        raise ValueError(f"Недостаточно координат: {len(coordinates)}")
+            raise ValueError(f"Недостаточно координат: {len(coordinates)}")
     
-    logger.info(f"Координат участка: {len(coordinates)}")
+    logger.info(f"Координат участка: {len(coordinates)}")        
     
-    # ========== ШАГ 2: Создание слоя участка ========== #
+    
+    numbered_contours = renumber_egrn_contours(egrn_data.contours)
+    logger.info(f"Контуров с нумерацией: {len(numbered_contours)}")
     
     parcel = ParcelLayer(
         cadnum=egrn_data.cadnum or "Без_номера",
         coordinates=coordinates,
         area=float(egrn_data.area) if egrn_data.area else None,
-        address=egrn_data.address
+        address=egrn_data.address,
+        numbered_contours=numbered_contours  # ← ДОБАВИТЬ ЭТОТ ПАРАМЕТР
     )
     
+        
     logger.info(f"Слой участка создан, площадь: {parcel.geometry.area:.2f} кв.м")
     
     # ========== ШАГ 3: Создание зоны строительства ========== #
     
-    building_zone_geom = create_building_zone(coordinates, buffer_distance=-5.0)
+    building_zone_geom = create_building_zone(coordinates, buffer_distance=-1.0)
     building_zone = BuildingZoneLayer(geometry=building_zone_geom)
     
     logger.info(f"Зона строительства создана, площадь: {building_zone.geometry.area:.2f} кв.м")

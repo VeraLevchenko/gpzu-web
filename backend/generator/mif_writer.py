@@ -197,43 +197,115 @@ def create_parcel_points_mif(
     output_dir: Path,
     filename: str = "участок_точки"
 ) -> Tuple[Path, Path]:
-    """Создать MIF/MID файлы характерных точек участка."""
+    """
+    Создать MIF/MID файлы характерных точек участка.
     
-    logger.info(f"Создание MIF/MID точек: {len(parcel_data.coordinates)} точек")
+    ИСПРАВЛЕНО: Теперь использует правильную нумерацию из numbered_contours,
+    где одинаковые координаты получают одинаковый номер (как в текстовой части градплана).
+    """
+    
+    logger.info(f"Создание MIF/MID точек участка")
     
     output_dir = Path(output_dir)
     mif_path = output_dir / f"{filename}.MIF"
     mid_path = output_dir / f"{filename}.MID"
     
-    coords = parcel_data.coordinates
-    
-    with open(mif_path, 'wb') as f:
-        def w(text: str):
-            f.write(text.encode('cp1251'))
+    # ✅ ИСПРАВЛЕНО: Используем numbered_contours если доступны
+    if hasattr(parcel_data, 'numbered_contours') and parcel_data.numbered_contours:
+        # Есть правильная нумерация - используем её
+        logger.info(f"Используется нумерация из numbered_contours")
         
-        w('Version   450\n')
-        w('Charset "WindowsCyrillic"\n')
-        w('Delimiter ","\n')
-        w(f'{MSK42_COORDSYS}\n')
-        w('Columns 2\n')
-        w('  Кадастровый_номер Char(254)\n')
-        w('  Номер_точки Integer\n')
-        w('Data\n\n')
+        # Собираем все точки с номерами из контуров
+        # numbered_contours = List[List[Coord]], где Coord имеет num, x, y
+        all_points = []
+        for contour in parcel_data.numbered_contours:
+            for point in contour:
+                all_points.append(point)
         
-        for i, (x, y) in enumerate(coords, start=1):
-            w(f'Point {x} {y}\n')
-            w('    Symbol (34,6,12)\n')
-            w('\n')
-    
-    with open(mid_path, 'wb') as f:
-        cadnum_safe = safe_encode_cp1251(parcel_data.cadnum)
-        cadnum = escape_mif_string(cadnum_safe)
+        # Убираем дубликаты по координатам (оставляем первое вхождение)
+        unique_points = []
+        seen_coords = set()
         
-        for i in range(1, len(coords) + 1):
-            line = f'{cadnum},{i}\n'
-            f.write(line.encode('cp1251'))
+        for pt in all_points:
+            # Нормализуем координаты для сравнения
+            x_norm = pt.x.strip().replace(',', '.')
+            y_norm = pt.y.strip().replace(',', '.')
+            coord_key = (x_norm, y_norm)
+            
+            if coord_key not in seen_coords:
+                seen_coords.add(coord_key)
+                unique_points.append(pt)
+        
+        logger.info(f"Всего точек: {len(all_points)}, уникальных: {len(unique_points)}")
+        
+        # Записываем MIF
+        with open(mif_path, 'wb') as f:
+            def w(text: str):
+                f.write(text.encode('cp1251'))
+            
+            w('Version   450\n')
+            w('Charset "WindowsCyrillic"\n')
+            w('Delimiter ","\n')
+            w(f'{MSK42_COORDSYS}\n')
+            w('Columns 2\n')
+            w('  Кадастровый_номер Char(254)\n')
+            w('  Номер_точки Integer\n')
+            w('Data\n\n')
+            
+            for pt in unique_points:
+                # Координаты уже в правильном формате (x=север, y=восток)
+                x = pt.x.strip().replace(',', '.')
+                y = pt.y.strip().replace(',', '.')
+                w(f'Point {x} {y}\n')
+                w('    Symbol (34,6,12)\n')
+                w('\n')
+        
+        # Записываем MID
+        with open(mid_path, 'wb') as f:
+            cadnum_safe = safe_encode_cp1251(parcel_data.cadnum)
+            cadnum = escape_mif_string(cadnum_safe)
+            
+            for pt in unique_points:
+                line = f'{cadnum},{pt.num}\n'
+                f.write(line.encode('cp1251'))
+        
+        logger.info(f"✅ MIF/MID точек созданы с правильной нумерацией ({len(unique_points)} точек)")
+        
+    else:
+        # Нет numbered_contours - используем старую логику (последовательная нумерация)
+        logger.warning(f"numbered_contours отсутствует, используется последовательная нумерация")
+        
+        coords = parcel_data.coordinates
+        logger.info(f"Создание MIF/MID точек: {len(coords)} точек (последовательная нумерация)")
+        
+        with open(mif_path, 'wb') as f:
+            def w(text: str):
+                f.write(text.encode('cp1251'))
+            
+            w('Version   450\n')
+            w('Charset "WindowsCyrillic"\n')
+            w('Delimiter ","\n')
+            w(f'{MSK42_COORDSYS}\n')
+            w('Columns 2\n')
+            w('  Кадастровый_номер Char(254)\n')
+            w('  Номер_точки Integer\n')
+            w('Data\n\n')
+            
+            for i, (x, y) in enumerate(coords, start=1):
+                w(f'Point {x} {y}\n')
+                w('    Symbol (34,6,12)\n')
+                w('\n')
+        
+        with open(mid_path, 'wb') as f:
+            cadnum_safe = safe_encode_cp1251(parcel_data.cadnum)
+            cadnum = escape_mif_string(cadnum_safe)
+            
+            for i in range(1, len(coords) + 1):
+                line = f'{cadnum},{i}\n'
+                f.write(line.encode('cp1251'))
+        
+        logger.info(f"✅ MIF/MID точек созданы (последовательная нумерация)")
     
-    logger.info(f"✅ MIF/MID точек созданы")
     return mif_path, mid_path
 
 
