@@ -9,6 +9,8 @@ from datetime import datetime
 from generator.gp_builder import GPBuilder
 from models.gp_data import GPData, ParcelInfo
 from utils.spatial_analysis import perform_spatial_analysis
+from database import SessionLocal
+from models.application import Application
 
 router = APIRouter()
 logger = logging.getLogger("gpzu-web.gradplan")
@@ -22,13 +24,44 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_or_create_application(app_data: Dict[str, Any], parcel_data: Dict[str, Any], db_session) -> int:
+    """Находит существующее заявление или создает новое."""
+    app_number = app_data.get('number', '')
+    
+    existing = db_session.query(Application).filter(Application.number == app_number).first()
+    
+    if existing:
+        logger.info(f"✅ Найдено существующее заявление #{app_number} (ID: {existing.id})")
+        return existing.id
+    
+    logger.info(f"📝 Создаем новое заявление #{app_number}")
+    
+    application = Application(
+        number=app_number,
+        date=app_data.get('date', ''),
+        applicant=app_data.get('applicant', ''),
+        phone=app_data.get('phone', '—'),
+        email=app_data.get('email', '—'),
+        cadnum=parcel_data.get('cadnum', ''),
+        address=parcel_data.get('address', ''),
+        area=float(parcel_data.get('area', 0)) if parcel_data.get('area') else None,
+        permitted_use=parcel_data.get('permitted_use', ''),
+        status='in_progress'
+    )
+    
+    db_session.add(application)
+    db_session.flush()
+    
+    logger.info(f"✅ Заявление создано (ID: {application.id})")
+    return application.id
+
+
 @router.post("/generate")
 async def generate_gradplan(request: Request):
-    """
-    Генерация градостроительного плана.
+    """Генерация градостроительного плана с записью в БД"""
     
-    Принимает JSON с полными данными для формирования ГПЗУ.
-    """
+    db = SessionLocal()
+    
     try:
         data = await request.json()
         logger.info("Получен запрос на генерацию градплана")
@@ -41,45 +74,54 @@ async def generate_gradplan(request: Request):
         if not data.get("zone"):
             raise HTTPException(status_code=400, detail="Отсутствуют данные территориальной зоны")
         
-        # Формируем имя файла
+        # ========== СОЗДАЕМ/НАХОДИМ APPLICATION В БД ========== #
+        application_id = get_or_create_application(
+            app_data=data["application"],
+            parcel_data=data["parcel"],
+            db_session=db
+        )
+        db.commit()
+        
+        # ========== ГЕНЕРАЦИЯ ДОКУМЕНТА ========== #
         app_number = data["application"].get("number", "UNKNOWN").replace("/", "-")
         cadnum = data["parcel"].get("cadnum", "UNKNOWN").replace(":", "-")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
         output_filename = f"GPZU_{cadnum}_{app_number}_{timestamp}.docx"
         output_path = UPLOADS_DIR / output_filename
         
-        # Генерация документа
         builder = GPBuilder(str(TEMPLATE_PATH))
         result_path = builder.generate(data, str(output_path))
         
-        logger.info(f"Градплан успешно сформирован: {result_path}")
+        logger.info(f"✅ Градплан успешно сформирован: {result_path} (Application ID: {application_id})")
         
         return JSONResponse(content={
             "success": True,
             "message": "Градостроительный план успешно сформирован",
             "filename": output_filename,
-            "download_url": f"/api/gp/gradplan/download/{output_filename}"
+            "download_url": f"/api/gp/gradplan/download/{output_filename}",
+            "application_id": application_id
         })
         
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
+        db.rollback()
         logger.error(f"Ошибка генерации градплана: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 
 @router.get("/download/{filename}")
 async def download_gradplan(filename: str):
-    """
-    Скачивание сгенерированного градплана.
-    ИСПРАВЛЕНО: добавлен правильный Content-Disposition заголовок
-    """
+    """Скачивание сгенерированного градплана"""
     file_path = UPLOADS_DIR / filename
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Файл не найден")
     
-    # ИСПРАВЛЕНИЕ: добавляем правильные заголовки
     return FileResponse(
         path=str(file_path),
         filename=filename,
@@ -93,24 +135,7 @@ async def download_gradplan(filename: str):
 
 @router.post("/spatial-analysis")
 async def spatial_analysis(request: Request):
-    """
-    Пространственный анализ участка по координатам из ЕГРН.
-    
-    Определяет:
-    - Территориальную зону
-    - Объекты капитального строительства
-    - ЗОУИТ
-    - Документацию по планировке
-    
-    Входные данные:
-    {
-        "cadnum": "42:30:0305010:128",
-        "coordinates": [
-            {"num": "1", "x": "2199600.00", "y": "438100.00"},
-            ...
-        ]
-    }
-    """
+    """Пространственный анализ участка по координатам из ЕГРН"""
     try:
         data = await request.json()
         cadnum = data.get("cadnum")
@@ -124,20 +149,16 @@ async def spatial_analysis(request: Request):
         
         logger.info(f"Пространственный анализ для КН: {cadnum}")
         
-        # Создаём минимальный объект GPData для анализа
-        # coordinates уже в формате списка словарей [{"num": "1", "x": "...", "y": "..."}]
         gp_data = GPData()
         gp_data.parcel = ParcelInfo(
             cadnum=cadnum,
             address="",
             area="",
-            coordinates=coordinates  # Передаём как есть - список словарей
+            coordinates=coordinates
         )
         
-        # Выполняем пространственный анализ
         gp_data = perform_spatial_analysis(gp_data)
         
-        # Формируем ответ
         result = {
             "zone": {
                 "code": gp_data.zone.code if gp_data.zone else "",
@@ -193,7 +214,5 @@ async def spatial_analysis(request: Request):
 
 @router.get("/health")
 async def health_check():
-    """
-    Проверка здоровья API градплана.
-    """
+    """Проверка здоровья API градплана"""
     return JSONResponse(content={"status": "ok", "service": "gradplan"})

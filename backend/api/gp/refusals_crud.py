@@ -20,8 +20,12 @@ ATTACHMENTS_DIR = Path("./uploads/attachments/refusals")
 
 
 class RefusalUpdate(BaseModel):
+    out_number: Optional[int] = None
+    out_date: Optional[str] = None
+    out_year: Optional[int] = None
     reason_code: Optional[str] = None
     reason_text: Optional[str] = None
+    application_id: Optional[int] = None
 
 
 @router.get("")
@@ -36,7 +40,16 @@ async def get_refusals(
         query = query.filter(Refusal.out_year == year)
     total = query.count()
     items = query.order_by(Refusal.created_at.desc()).offset(skip).limit(limit).all()
-    return {"total": total, "items": [item.to_dict() for item in items], "skip": skip, "limit": limit}
+    
+    # Формируем результат с данными заявления
+    result_items = []
+    for item in items:
+        item_dict = item.to_dict()
+        if item.application:
+            item_dict["application"] = item.application.to_dict()
+        result_items.append(item_dict)
+    
+    return {"total": total, "items": result_items, "skip": skip, "limit": limit}
 
 
 @router.get("/{refusal_id}")
@@ -55,9 +68,26 @@ async def update_refusal(refusal_id: int, data: RefusalUpdate, db: Session = Dep
     refusal = db.query(Refusal).filter(Refusal.id == refusal_id).first()
     if not refusal:
         raise HTTPException(status_code=404, detail="Отказ не найден")
+    
     update_data = data.dict(exclude_unset=True)
+    
+    # Проверка уникальности номера если изменяется
+    if 'out_number' in update_data or 'out_year' in update_data:
+        new_number = update_data.get('out_number', refusal.out_number)
+        new_year = update_data.get('out_year', refusal.out_year)
+        
+        existing = db.query(Refusal).filter(
+            Refusal.out_number == new_number,
+            Refusal.out_year == new_year,
+            Refusal.id != refusal_id
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Отказ с номером {new_number} за {new_year} год уже существует")
+    
     for field, value in update_data.items():
         setattr(refusal, field, value)
+    
     db.commit()
     db.refresh(refusal)
     return {"success": True, "data": refusal.to_dict()}

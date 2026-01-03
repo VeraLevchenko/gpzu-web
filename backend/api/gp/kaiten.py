@@ -4,6 +4,8 @@ import logging
 
 from parsers.application_parser import parse_application_docx, ApplicationData
 from utils.kaiten_service import create_card
+from database import SessionLocal
+from models.application import Application
 from core.config import (
     KAITEN_DOMAIN,
     KAITEN_SPACE_ID,
@@ -17,6 +19,39 @@ from core.config import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/gp/kaiten", tags=["kaiten"])
+
+
+def get_or_create_application(app_data: Dict[str, Any], db_session) -> int:
+    """Находит существующее заявление или создает новое."""
+    app_number = app_data.get('number', '')
+    
+    existing = db_session.query(Application).filter(Application.number == app_number).first()
+    
+    if existing:
+        logger.info(f"✅ Найдено существующее заявление #{app_number} (ID: {existing.id})")
+        return existing.id
+    
+    logger.info(f"📝 Создаем новое заявление #{app_number}")
+    
+    application = Application(
+        number=app_number,
+        date=app_data.get('date_text', ''),
+        applicant=app_data.get('applicant', ''),
+        phone='—',
+        email='—',
+        cadnum=app_data.get('cadnum', ''),
+        address='—',
+        area=None,
+        permitted_use=app_data.get('purpose', ''),
+        status='in_progress'
+    )
+    
+    db_session.add(application)
+    db_session.flush()
+    
+    logger.info(f"✅ Заявление создано (ID: {application.id})")
+    return application.id
+
 
 @router.post("/parse-application")
 async def parse_application_endpoint(file: UploadFile = File(...)):
@@ -49,11 +84,18 @@ async def parse_application_endpoint(file: UploadFile = File(...)):
 
 @router.post("/create-task")
 async def create_task_endpoint(data: Dict[str, Any]):
-    """Создание задачи в Kaiten"""
+    """Создание задачи в Kaiten с записью в БД"""
+    
+    db = SessionLocal()
     
     try:
         app_data = data.get("application", {})
         
+        # ========== СОЗДАЕМ/НАХОДИМ APPLICATION В БД ========== #
+        application_id = get_or_create_application(app_data, db)
+        db.commit()
+        
+        # ========== СОЗДАЕМ КАРТОЧКУ В KAITEN ========== #
         applicant = app_data.get("applicant", "Неизвестный заявитель")
         number = app_data.get("number")
         
@@ -109,14 +151,21 @@ async def create_task_endpoint(data: Dict[str, Any]):
             f"/boards/card/{card_id}"
         )
         
+        logger.info(f"✅ Задача создана: Application ID={application_id}, Kaiten card={card_id}")
+        
         return {
             "success": True,
             "card_id": card_id,
             "card_url": card_url,
+            "application_id": application_id
         }
         
     except HTTPException:
+        db.rollback()
         raise
     except Exception as ex:
+        db.rollback()
         logger.exception(f"Ошибка создания задачи: {ex}")
         raise HTTPException(500, f"Ошибка: {str(ex)}")
+    finally:
+        db.close()

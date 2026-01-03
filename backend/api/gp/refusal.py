@@ -2,15 +2,16 @@
 """
 API endpoints для формирования отказа в выдаче ГПЗУ.
 
-ОБНОВЛЕНО (31.12.2024): Интеграция с БД
+ОБНОВЛЕНО (01.01.2026): Интеграция с БД + уведомления о записи
 """
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 import logging
 import io
+from datetime import datetime
 
-from generator.refusal_builder import build_refusal_document
+from generator.refusal_builder import build_refusal_doc
 
 logger = logging.getLogger(__name__)
 
@@ -63,58 +64,65 @@ async def generate_refusal(request: Request):
             "cadnum": "...",
             "address": "...",
             "area": "...",
-            "permitted_use": "..."
+            "vri": "..."
         },
-        "reason_code": "NO_RIGHTS"
+        "refusal": {
+            "date": "ДД.ММ.ГГГГ",
+            "reason_code": "NO_RIGHTS"
+        }
     }
     
-    ОБНОВЛЕНО: Теперь создает запись в БД (Application + Refusal)
+    ОБНОВЛЕНО: Создает записи в БД (Application + Refusal) и уведомляет пользователя
     """
     try:
         data = await request.json()
         
         application = data.get("application")
         egrn = data.get("egrn")
-        reason_code = data.get("reason_code")
+        refusal = data.get("refusal")
         
-        if not application or not egrn or not reason_code:
+        if not application or not egrn or not refusal:
             raise HTTPException(status_code=400, detail="Неполные данные")
         
+        reason_code = refusal.get("reason_code")
         if reason_code not in REFUSAL_REASONS:
             raise HTTPException(status_code=400, detail="Неверная причина отказа")
         
-        reason_info = REFUSAL_REASONS[reason_code]
+        logger.info(f"📝 Генерация отказа для заявления {application.get('number')}, причина: {reason_code}")
         
-        # Формируем контекст для генератора
+        # Формируем контекст для генератора (в новом формате)
         context = {
-            "app_number": application.get("number", "—"),
-            "app_date": application.get("date", "—"),
-            "applicant": application.get("applicant", "—"),
-            "phone": application.get("phone", "—"),
-            "email": application.get("email", "—"),
-            "cadnum": egrn.get("cadnum", "—"),
-            "address": egrn.get("address", "—"),
-            "area": egrn.get("area", "—"),
-            "permitted_use": egrn.get("permitted_use", "—"),
-            "reason_code": reason_code,
-            "reason_text": reason_info["text"],
-            "reason_title": reason_info["title"],
+            "application": application,
+            "egrn": egrn,
+            "refusal": refusal
         }
         
-        logger.info(f"📝 Генерация отказа для заявления {context['app_number']}, причина: {reason_code}")
+        # Генерируем документ с записью в БД
+        result = build_refusal_doc(context)
         
-        # Генерируем документ (теперь с записью в БД)
-        docx_bytes, out_number, out_date = build_refusal_document(context)
+        cadnum_safe = egrn.get("cadnum", "unknown").replace(":", "_")
+        date_str = datetime.now().strftime('%d-%m-%Y')
+        filename = f"Otkaz_{cadnum_safe}_{date_str}.docx"
         
-        cadnum_safe = context["cadnum"].replace(":", "_")
-        filename = f"Otkaz_{out_number}_{cadnum_safe}.docx"
+        # Формируем сообщение для пользователя
+        message = "Отказ успешно сформирован"
+        if result['application_created']:
+            message += ". ✅ Создана запись в журнале заявлений"
+        else:
+            message += ". ℹ️ Использована существующая запись заявления"
+        message += f". ✅ Запись в журнале отказов (ID: {result['refusal_id']})"
         
-        logger.info(f"✅ Отказ сформирован: исх. №{out_number} от {out_date}")
+        logger.info(f"✅ {message}")
         
-        return StreamingResponse(
-            io.BytesIO(docx_bytes),
+        return Response(
+            content=result['document'],
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Message": message,
+                "X-Application-Created": str(result['application_created']),
+                "X-Refusal-ID": str(result['refusal_id'])
+            }
         )
     
     except HTTPException:
