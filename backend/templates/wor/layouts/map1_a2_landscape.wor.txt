@@ -1,6 +1,6 @@
 Set Window FrontWindow() Printer
- Name "PDF24" Orientation Landscape Copies 1
- Papersize 8
+ Name "MapInfo PDF Printer Version 15.0" Orientation Landscape Copies 1
+ Papersize 7
 Layout
   Position (0.0520833,0.0520833) Units "in"
   Width 9.91667 Units "in" Height 4.71875 Units "in" 

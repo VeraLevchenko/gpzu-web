@@ -495,7 +495,7 @@ map1WindowID = FrontWindow()
     Display Global
     Global Pen (1,2,16711680) Brush (44,16711680) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
     Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With Кадастровый_номе
+      With Кадастровый_номер
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
 '''
@@ -545,13 +545,6 @@ map1WindowID = FrontWindow()
     Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
 '''
 
-    # (как было) – принтерный блок после карты 1
-    wor_content += '''Set Map Layer 1 Editable
-Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
- Papersize 9
-'''
-
     # ========== КАРТА 2: Ситуационный план ========== #
 
     wor_content += f'''Map From {map2_from_str} 
@@ -574,7 +567,7 @@ Set Map
     Display Global
     Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
     Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With Кадастровый_номе
+      With Кадастровый_номер
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
 '''
@@ -591,7 +584,7 @@ Set Map
     Display Graphic
     Global Pen (1,2,0) Brush (2,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
     Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With type
+      With Кадастровый_номер
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
   Layer 4
@@ -608,12 +601,6 @@ Set Map
       With Дорога
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
-'''
-
-    # (как было) – принтерный блок после карты 2
-    wor_content += '''Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
- Papersize 9
 '''
 
     # ========== LAYOUTS: 3 отчёта из файлов-шаблонов ========== #
