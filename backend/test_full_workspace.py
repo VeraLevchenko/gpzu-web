@@ -22,6 +22,7 @@ from generator.mif_writer import (
     create_parcel_points_mif,
     create_building_zone_mif,
     create_oks_mif,
+    create_oks_labels_mif
     create_zouit_mif,
     create_workspace_directory,
     get_project_base_dir,  # ✅ НОВАЯ ФУНКЦИЯ
@@ -148,6 +149,22 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
         print(f"✅ {mif4.name} и {mid4.name} ({len(workspace.capital_objects)} объектов)")
     else:
         print(f"⊘  ОКС пропущены (нет данных или геометрии)")
+
+    result_oks_labels = None
+    if result_oks and workspace.parcel.geometry:
+        result_oks_labels = create_oks_labels_mif(
+            capital_objects=workspace.capital_objects,
+            parcel_geometry=workspace.parcel.geometry,
+            output_dir=project_base,
+            filename="подписи_окс",
+        )
+
+    if result_oks_labels:
+        mif_lbl, mid_lbl = result_oks_labels
+        print(f"✅ {mif_lbl.name} и {mid_lbl.name} (слой подписей ОКС)")
+    else:
+        print("⊘  Слой подписей ОКС не создан (нет пересечений)")
+
     
     result_zouit = create_zouit_mif(workspace.zouit, project_base)
     result_labels = None  # Инициализация
@@ -204,6 +221,8 @@ def test_full_workspace_with_autosearch(egrn_file_path: str):
     print("-" * 80)
     
     has_oks = result_oks is not None
+
+    has_oks_labels = result_oks_labels is not None
     
     # ✅ WOR создаётся в корневой папке, слои берутся из подпапки
     wor_path = create_workspace_wor(

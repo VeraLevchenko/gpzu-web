@@ -29,6 +29,7 @@ from generator.mif_writer import (
     create_zouit_labels_mif,
     create_workspace_directory,
     get_project_base_dir,
+    create_oks_labels_mif
 )
 from generator.mif_to_tab_converter import convert_all_mif_to_tab
 from generator.wor_builder import create_workspace_wor
@@ -109,6 +110,17 @@ async def create_workspace(
             result_oks = create_oks_mif(workspace.capital_objects, project_base)
             has_oks = result_oks is not None
         
+        # ✅ ДОБАВЛЕНО: слой подписей ОКС (точки в центре пересечения ОКС с участком)
+        has_oks_labels = False
+        if has_oks and workspace.parcel.geometry:
+            result_oks_labels = create_oks_labels_mif(
+                capital_objects=workspace.capital_objects,
+                parcel_geometry=workspace.parcel.geometry,
+                output_dir=project_base,
+                filename="подписи_окс",
+            )
+            has_oks_labels = result_oks_labels is not None
+        
         zouit_files = None
         has_zouit_labels = False
         if workspace.zouit:
@@ -136,6 +148,7 @@ async def create_workspace(
             workspace_dir=workspace_dir,
             cadnum=workspace.parcel.cadnum,
             has_oks=has_oks,
+            has_oks_labels=has_oks_labels,
             zouit_files=zouit_files,
             has_zouit_labels=has_zouit_labels,
             address=workspace.parcel.address,

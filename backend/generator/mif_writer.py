@@ -381,7 +381,14 @@ def create_oks_mif(
     output_dir: Path,
     filename: str = "окс"
 ) -> Optional[Tuple[Path, Path]]:
-    """Создать MIF/MID файлы объектов капитального строительства."""
+    """
+    Создать MIF/MID файлы объектов капитального строительства.
+    
+    ИСПРАВЛЕНО: 
+    - Поддержка LineString и MultiLineString (линейные объекты)
+    - Поддержка Polygon и MultiPolygon
+    - Point и MultiPoint пропускаются (не нужны)
+    """
     
     if not capital_objects:
         logger.info("Нет ОКС для создания MIF/MID")
@@ -393,11 +400,40 @@ def create_oks_mif(
     mif_path = output_dir / f"{filename}.MIF"
     mid_path = output_dir / f"{filename}.MID"
     
-    valid_objects = [obj for obj in capital_objects if obj.geometry is not None]
+    # ========== Импорты для проверки типов геометрии ========== #
+    from shapely.geometry import (
+        Point, LineString, Polygon, 
+        MultiPoint, MultiLineString, MultiPolygon,
+        GeometryCollection
+    )
+    
+    # ========== Фильтруем только линейные и полигональные объекты ========== #
+    valid_objects = []
+    
+    for obj in capital_objects:
+        if obj.geometry is None:
+            continue
+            
+        geom = obj.geometry
+        
+        # Принимаем только LineString, MultiLineString, Polygon, MultiPolygon
+        if isinstance(geom, (LineString, MultiLineString, Polygon, MultiPolygon)):
+            valid_objects.append(obj)
+        elif isinstance(geom, GeometryCollection):
+            # Проверяем есть ли внутри линии или полигоны
+            for sub_geom in geom.geoms:
+                if isinstance(sub_geom, (LineString, Polygon)):
+                    valid_objects.append(obj)
+                    break
+        # Point и MultiPoint просто пропускаем
     
     if not valid_objects:
-        logger.warning("Нет ОКС с геометрией")
+        logger.warning("Нет ОКС с линейной или полигональной геометрией")
         return None
+    
+    logger.info(f"Отфильтровано ОКС (только линии и полигоны): {len(valid_objects)} из {len(capital_objects)}")
+    
+    # ========== Создание MIF ========== #
     
     with open(mif_path, 'wb') as f:
         def w(text: str):
@@ -418,19 +454,93 @@ def create_oks_mif(
         
         for i, obj in enumerate(valid_objects, start=1):
             geom = obj.geometry
+            geom_written = False
             
-            if hasattr(geom, 'x') and hasattr(geom, 'y'):
-                w(f'Point {geom.x} {geom.y}\n')
-                w('    Symbol (35,12,0)\n')
-            elif hasattr(geom, 'exterior'):
+            # ========== LINESTRING / MULTILINESTRING ========== #
+            if isinstance(geom, LineString):
+                coords = list(geom.coords)
+                if len(coords) >= 2:
+                    w(f'Pline {len(coords)}\n')
+                    for x, y in coords:
+                        w(f'{x} {y}\n')
+                    w('    Pen (1,2,0)\n')
+                    geom_written = True
+                    logger.debug(f"ОКС {i}: LineString записан ({len(coords)} точек)")
+                    
+            elif isinstance(geom, MultiLineString):
+                # Записываем как Pline Multiple Sections
+                valid_lines = [line for line in geom.geoms if len(line.coords) >= 2]
+                if valid_lines:
+                    w(f'Pline Multiple {len(valid_lines)}\n')
+                    for line in valid_lines:
+                        coords = list(line.coords)
+                        w(f'  {len(coords)}\n')
+                        for x, y in coords:
+                            w(f'{x} {y}\n')
+                    w('    Pen (1,2,0)\n')
+                    geom_written = True
+                    logger.debug(f"ОКС {i}: MultiLineString записан ({len(valid_lines)} линий)")
+            
+            # ========== POLYGON / MULTIPOLYGON ========== #
+            elif isinstance(geom, Polygon):
                 coords = list(geom.exterior.coords)
-                w('Region  1\n')
-                w(f'  {len(coords)}\n')
-                for x, y in coords:
-                    w(f'{x} {y}\n')
-                w('    Pen (1,2,0)\n')
-                w('    Brush (1,0,16777215)\n')
+                if len(coords) >= 3:
+                    w('Region  1\n')
+                    w(f'  {len(coords)}\n')
+                    for x, y in coords:
+                        w(f'{x} {y}\n')
+                    w('    Pen (1,2,0)\n')
+                    w('    Brush (1,0,16777215)\n')
+                    geom_written = True
+                    logger.debug(f"ОКС {i}: Polygon записан ({len(coords)} точек)")
+                    
+            elif isinstance(geom, MultiPolygon):
+                valid_polys = [p for p in geom.geoms if len(p.exterior.coords) >= 3]
+                if valid_polys:
+                    w(f'Region  {len(valid_polys)}\n')
+                    for poly in valid_polys:
+                        coords = list(poly.exterior.coords)
+                        w(f'  {len(coords)}\n')
+                        for x, y in coords:
+                            w(f'{x} {y}\n')
+                    w('    Pen (1,2,0)\n')
+                    w('    Brush (1,0,16777215)\n')
+                    geom_written = True
+                    logger.debug(f"ОКС {i}: MultiPolygon записан ({len(valid_polys)} полигонов)")
+            
+            # ========== GEOMETRYCOLLECTION ========== #
+            elif isinstance(geom, GeometryCollection):
+                # Пытаемся найти первую линию или полигон
+                for sub_geom in geom.geoms:
+                    if isinstance(sub_geom, LineString) and len(sub_geom.coords) >= 2:
+                        coords = list(sub_geom.coords)
+                        w(f'Pline {len(coords)}\n')
+                        for x, y in coords:
+                            w(f'{x} {y}\n')
+                        w('    Pen (1,2,0)\n')
+                        geom_written = True
+                        logger.debug(f"ОКС {i}: GeometryCollection - LineString записан")
+                        break
+                    elif isinstance(sub_geom, Polygon) and len(sub_geom.exterior.coords) >= 3:
+                        coords = list(sub_geom.exterior.coords)
+                        w('Region  1\n')
+                        w(f'  {len(coords)}\n')
+                        for x, y in coords:
+                            w(f'{x} {y}\n')
+                        w('    Pen (1,2,0)\n')
+                        w('    Brush (1,0,16777215)\n')
+                        geom_written = True
+                        logger.debug(f"ОКС {i}: GeometryCollection - Polygon записан")
+                        break
+            
+            # ========== НЕИЗВЕСТНЫЙ ТИП ========== #
+            if not geom_written:
+                logger.warning(f"ОКС {i} ({obj.cadnum}): не удалось записать геометрию типа {type(geom).__name__}")
+                continue
+            
             w('\n')
+    
+    # ========== Создание MID ========== #
     
     with open(mid_path, 'wb') as f:
         for i, obj in enumerate(valid_objects, start=1):
@@ -451,7 +561,152 @@ def create_oks_mif(
             f.write(line.encode('cp1251'))
     
     logger.info(f"✅ MIF/MID ОКС созданы: {len(valid_objects)} объектов")
+    
+    # ========== Статистика по типам геометрии ========== #
+    geom_types = {}
+    for obj in valid_objects:
+        geom_type = type(obj.geometry).__name__
+        geom_types[geom_type] = geom_types.get(geom_type, 0) + 1
+    
+    logger.info(f"Статистика геометрии ОКС: {dict(geom_types)}")
+    
     return mif_path, mid_path
+
+    # ========== Создание подписей окс ========== #
+
+def create_oks_labels_mif(
+    capital_objects: List[Any],
+    parcel_geometry: Any,
+    output_dir: Path,
+    filename: str = "подписи_окс",
+    map_scale: int = 500,          # масштаб карты (для ГПЗУ обычно 1:500)
+    diameter_mm: float = 6.0,      # диаметр кружка на печати
+    segments: int = 36             # аппроксимация окружности (чем больше — тем круглее)
+) -> Optional[Tuple[Path, Path]]:
+    """
+    Создать отдельный слой подписей ОКС.
+
+    Геометрия слоя: ПОЛИГОН (кружок) с белой заливкой и чёрной границей.
+    Центр кружка = центр ПЕРЕСЕЧЕНИЯ геометрии ОКС с участком.
+    В MID пишем "Номер" (порядковый номер ОКС), причём нумерация
+    совпадает с create_oks_mif(): номер считается только среди valid_objects
+    (LineString/MultiLineString/Polygon/MultiPolygon + GeometryCollection с ними).
+    """
+
+    if not capital_objects:
+        logger.info("Нет ОКС для создания слоя подписей")
+        return None
+
+    import math
+    from shapely.geometry import (
+        LineString, Polygon,
+        MultiLineString, MultiPolygon,
+        GeometryCollection,
+    )
+
+    output_dir = Path(output_dir)
+    mif_path = output_dir / f"{filename}.MIF"
+    mid_path = output_dir / f"{filename}.MID"
+
+    # ✅ ВАЖНО: фильтр должен совпадать с create_oks_mif(),
+    # иначе нумерация (поле "Номер") не совпадёт.
+    valid_objects: List[Any] = []
+    for obj in capital_objects:
+        geom = getattr(obj, "geometry", None)
+        if geom is None:
+            continue
+
+        if isinstance(geom, (LineString, MultiLineString, Polygon, MultiPolygon)):
+            valid_objects.append(obj)
+        elif isinstance(geom, GeometryCollection):
+            # как в create_oks_mif: берём объект, если внутри есть линия/полигон
+            for sub_geom in geom.geoms:
+                if isinstance(sub_geom, (LineString, Polygon)):
+                    valid_objects.append(obj)
+                    break
+        # Point/MultiPoint пропускаем
+
+    if not valid_objects:
+        logger.warning("Нет ОКС с линейной или полигональной геометрией для подписей")
+        return None
+
+    # Перевод диаметра в "метры на местности" через масштаб:
+    # diameter_mm (мм на бумаге) -> meters_paper -> meters_ground = meters_paper * scale
+    # radius = diameter/2
+    radius_m = (diameter_mm / 1000.0) * float(map_scale) / 2.0
+
+    def _circle_points(cx: float, cy: float, r: float, n: int) -> List[Tuple[float, float]]:
+        # замыкаем контур последней точкой = первой
+        pts: List[Tuple[float, float]] = []
+        for k in range(n):
+            a = 2.0 * math.pi * k / n
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+        pts.append(pts[0])
+        return pts
+
+    # Собираем центры и номера (номер = порядковый среди valid_objects)
+    circles: List[Tuple[float, float, int]] = []
+    for i, obj in enumerate(valid_objects, start=1):
+        geom = getattr(obj, "geometry", None)
+        if geom is None:
+            continue
+
+        try:
+            inter = parcel_geometry.intersection(geom)
+            if inter.is_empty:
+                continue
+
+            c = inter.centroid
+            if c.is_empty:
+                continue
+
+            circles.append((c.x, c.y, i))
+        except Exception as e:
+            logger.warning(f"Ошибка вычисления центра подписи ОКС #{i}: {e}")
+            continue
+
+    if not circles:
+        logger.warning("Не создано ни одной подписи ОКС (нет пересечений с участком)")
+        return None
+
+    # ========== Создание MIF ========== #
+    with open(mif_path, "wb") as f:
+        def w(text: str):
+            f.write(text.encode("cp1251"))
+
+        w("Version   450\n")
+        w('Charset "WindowsCyrillic"\n')
+        w('Delimiter ","\n')
+        w(f"{MSK42_COORDSYS}\n")
+        w("Columns 1\n")
+        w("  Номер Integer\n")
+        w("Data\n\n")
+
+        # Рисуем кружок как полигон (Region) с белой заливкой и чёрной обводкой
+        for x, y, _ in circles:
+            pts = _circle_points(x, y, radius_m, segments)
+
+            w("Region  1\n")
+            w(f"  {len(pts)}\n")
+            for px, py in pts:
+                w(f"{px} {py}\n")
+
+            # Черная граница, белая заливка
+            w("    Pen (1,2,0)\n")
+            w("\n")
+
+    # ========== Создание MID ========== #
+    with open(mid_path, "wb") as f:
+        for _, _, num in circles:
+            f.write(f"{num}\n".encode("cp1251"))
+
+    logger.info(
+        f"✅ Слой подписей ОКС создан: {mif_path.name} ({len(circles)} кружков), "
+        f"Ø={diameter_mm}мм, масштаб 1:{map_scale}"
+    )
+    return mif_path, mid_path
+
+
 
 
 # ================ СОЗДАНИЕ MIF/MID ЗОУИТ (ОТДЕЛЬНЫЕ СЛОИ) ================ #

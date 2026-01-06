@@ -262,6 +262,7 @@ def create_workspace_wor(
     workspace_dir: Path,
     cadnum: str,
     has_oks: bool = False,
+    has_oks_labels: bool = False,
     zouit_files: Optional[List[Tuple[Path, Path]]] = None,
     has_zouit_labels: bool = False,
     zouit_legend_items: Optional[List[Tuple[str, str]]] = None,
@@ -366,6 +367,9 @@ def create_workspace_wor(
     # 1. ОКС (если есть) - самый нижний слой
     if has_oks:
         map1_layers.append("окс")
+    
+    if has_oks_labels:
+        map1_layers.append("подписи_окс")
 
     # 2. Точки участка
     map1_layers.append("участок_точки")
@@ -425,6 +429,7 @@ def create_workspace_wor(
 
     if has_oks:
         wor_content += f'Open Table "{layers_subdir}\\\\окс.TAB" As окс Interactive\n'
+        wor_content += f'Open Table "{layers_subdir}\\\\подписи_окс.TAB" As подписи_окс Interactive\n'
 
     # Открываем каждый файл ЗОУИТ
     if zouit_files:
@@ -472,77 +477,88 @@ map1WindowID = FrontWindow()
     if has_oks:
         wor_content += f'''Set Map
   Layer {layer_index}
-    Display Graphic
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+    Display Global
+    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,0,17) Line (1,2,0) Font ("Arial CYR",0,10,0)
+'''
+        layer_index += 1
+
+    # ✅ СЛОЙ: подписи_окс — номер ОКС в кружочке
+    if has_oks_labels:
+        wor_content += f'''Set Map
+  Layer {layer_index}
+    Display Global
+    Global Pen (1,2,0)
+    Label Line None Position Center Font ("Arial CYR",513,10,0,16777215) Pen (1,2,0)
+      With Номер
+      Parallel On Auto Off Overlap Off Duplicates Off Offset 0
+      Visibility On
 '''
         layer_index += 1
 
     # ✅ СЛОЙ: Точки участка (КРАСНЫЕ КРУЖКИ С ПОДПИСЯМИ)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-    Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0) 
-      With Номер_точки
-      Parallel On Auto Off Overlap Off Duplicates On Offset 4
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+        Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0)
+          With Номер_точки
+          Parallel On Auto Off Overlap Off Duplicates On Offset 4
+          Visibility On
 '''
     layer_index += 1
 
     # ✅ СЛОЙ: Зона строительства (КРАСНАЯ ШТРИХОВКА)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (1,2,16711680) Brush (44,16711680) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-    Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With Кадастровый_номер
-      Parallel On Auto Off Overlap Off Duplicates On Offset 2
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,16711680) Brush (44,16711680) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+        Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0)
+          With Кадастровый_номер
+          Parallel On Auto Off Overlap Off Duplicates On Offset 2
+          Visibility On
 '''
     layer_index += 1
 
-    
     # ЗОУИТ — индивидуальные стили из справочника
     if zouit_files and zouit_list:
-      for i, (mif_path, _) in enumerate(zouit_files):
-          z = zouit_list[i]
-          zouit_name = getattr(z, "name", "") or ""
-          style = get_zouit_style(zouit_name)
-          style_global = style_to_layer_global(style)
- 
-          wor_content += f'''Set Map
-  Layer {layer_index}
-      Display Global
-      {style_global} Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-  '''
-          layer_index += 1
+        for i, (mif_path, _) in enumerate(zouit_files):
+            z = zouit_list[i]
+            zouit_name = getattr(z, "name", "") or ""
+            style = get_zouit_style(zouit_name)
+            style_global = style_to_layer_global(style)
 
+            wor_content += f'''Set Map
+    Layer {layer_index}
+        Display Global
+        {style_global} Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+'''
+            layer_index += 1
 
     # ✅ СЛОЙ: Подписи ЗОУИТ (НЕВИДИМЫЕ ТОЧКИ С ПОДПИСЯМИ)
     if has_zouit_labels:
         wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Symbol (31,0,0)
-    Label Line None Position Center Font ("Arial CYR",256,10,0,16777215) Pen (1,2,0) 
-      With Реестровый_номер
-      Parallel On Auto On Overlap Off Duplicates On Offset 2
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Symbol (31,0,0)
+        Label Line None Position Center Font ("Arial CYR",256,10,0,16777215) Pen (1,2,0)
+          With Реестровый_номер
+          Parallel On Auto On Overlap Off Duplicates On Offset 2
+          Visibility On
 '''
         layer_index += 1
 
     # ✅ СЛОЙ: Красные линии (СТИЛЬ ИЗ ИСХОДНОГО ФАЙЛА)
     wor_content += f'''Set Map
-        Layer {layer_index}
-            Display Graphic
-    '''
+    Layer {layer_index}
+        Display Graphic
+'''
     layer_index += 1
 
     # ✅ СЛОЙ: Участок (КРАСНАЯ ЖИРНАЯ ЛИНИЯ)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+    Layer {layer_index}
+        Display Global
+        Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
 '''
 
     # ========== КАРТА 2: Ситуационный план ========== #
