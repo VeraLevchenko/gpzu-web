@@ -364,6 +364,12 @@ def create_workspace_wor(
     # Порядок слоёв (снизу вверх):
     map1_layers = []
 
+    # 6. Участок - самый верхний слой
+    map1_layers.append("участок")
+
+    # 2. Точки участка
+    map1_layers.append("участок_точки")
+
     # 1. ОКС (если есть) - самый нижний слой
     if has_oks:
         map1_layers.append("окс")
@@ -371,9 +377,7 @@ def create_workspace_wor(
     if has_oks_labels:
         map1_layers.append("подписи_окс")
 
-    # 2. Точки участка
-    map1_layers.append("участок_точки")
-
+    
     # 3. Зона строительства
     map1_layers.append("зона_строительства")
 
@@ -389,9 +393,7 @@ def create_workspace_wor(
     # 5. Красные линии  # ← ДОБАВЬ ЭТО
     map1_layers.append("Красные_линии")  # ← ДОБАВЬ ЭТО
 
-    # 6. Участок - самый верхний слой
-    map1_layers.append("участок")
-
+    
     map1_from_str = ",".join(map1_layers)
 
     # ========== КАРТА 2: Ситуационный план ========== #
@@ -473,6 +475,26 @@ map1WindowID = FrontWindow()
 
     layer_index = 1
 
+    # ✅ СЛОЙ: Участок (КРАСНАЯ ЖИРНАЯ ЛИНИЯ)
+    wor_content += f'''Set Map
+    Layer {layer_index}
+      Display Global
+      Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+'''
+    layer_index += 1
+
+    # ✅ СЛОЙ: Точки участка (КРАСНЫЕ КРУЖКИ С ПОДПИСЯМИ)
+    wor_content += f'''Set Map
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+        Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0)
+          With Номер_точки
+          Parallel On Auto Off Overlap Off Duplicates On Offset 4
+          Visibility On
+'''
+    layer_index += 1
+
     # ✅ СЛОЙ: ОКС (если есть)
     if has_oks:
         wor_content += f'''Set Map
@@ -488,24 +510,13 @@ map1WindowID = FrontWindow()
   Layer {layer_index}
     Display Global
     Global Pen (1,2,0)
-    Label Line None Position Center Font ("Arial CYR",513,10,0,16777215) Pen (1,2,0)
+    Label Line None Position Center Font ("Arial CYR",513,12,0,16777215) Pen (1,2,0)
       With Номер
       Parallel On Auto Off Overlap Off Duplicates Off Offset 0
+      Visibility On
     Visibility On
 '''
         layer_index += 1
-
-    # ✅ СЛОЙ: Точки участка (КРАСНЫЕ КРУЖКИ С ПОДПИСЯМИ)
-    wor_content += f'''Set Map
-    Layer {layer_index}
-        Display Global
-        Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-        Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0)
-          With Номер_точки
-          Parallel On Auto Off Overlap Off Duplicates On Offset 4
-          Visibility On
-'''
-    layer_index += 1
 
     # ✅ СЛОЙ: Зона строительства (КРАСНАЯ ШТРИХОВКА)
     wor_content += f'''Set Map
@@ -551,14 +562,6 @@ map1WindowID = FrontWindow()
     wor_content += f'''Set Map
     Layer {layer_index}
         Display Graphic
-'''
-    layer_index += 1
-
-    # ✅ СЛОЙ: Участок (КРАСНАЯ ЖИРНАЯ ЛИНИЯ)
-    wor_content += f'''Set Map
-    Layer {layer_index}
-        Display Global
-        Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
 '''
 
     # ========== КАРТА 2: Ситуационный план ========== #
