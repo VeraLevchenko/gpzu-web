@@ -1,0 +1,50 @@
+/* frontend/src/pages/Journals.css */
+
+.journals-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.journals-content {
+  padding: 40px 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.journals-tabs {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.journals-tabs .ant-tabs-nav {
+  margin-bottom: 24px;
+}
+
+.journals-tabs .ant-tabs-tab {
+  font-size: 16px;
+  font-weight: 500;
+  padding: 12px 24px;
+}
+
+.journals-tabs .ant-tabs-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .journals-content {
+    padding: 24px 12px;
+  }
+  
+  .journals-tabs {
+    padding: 16px;
+  }
+  
+  .journals-tabs .ant-tabs-tab {
+    font-size: 14px;
+    padding: 8px 16px;
+  }
+}

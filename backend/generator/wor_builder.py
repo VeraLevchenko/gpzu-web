@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from datetime import datetime
 import logging
+import os
+from dotenv import load_dotenv
+from generator.zouit_styles import (get_zouit_style, style_to_layer_global, style_to_legend_rect,)
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -202,18 +207,26 @@ def _build_zouit_legend_block(
 
         # прямоугольник центрируем по высоте блока текста
         y_rect = y + (block_h - rect_h) / 2
+        
+        # === ДОБАВЛЕНО: стиль из справочника ЗОУИТ ===
+        style = get_zouit_style(name)
+        pen_line, brush_line = style_to_legend_rect(style)
+
 
         # --- прямоугольник-образец (в колонке существующих образцов) ---
         out.append(
             """  Create Rect ({x1},{y1}) ({x2},{y2})
-    Pen (1,2,0)
-    Brush (2,16777215)""".format(
+    {pen}
+    {brush}""".format(
                 x1=round(symbol_left, 4),
                 y1=round(y_rect, 4),
                 x2=round(symbol_left + rect_w, 4),
                 y2=round(y_rect + rect_h, 4),
+                pen=pen_line,
+                brush=brush_line,
             )
         )
+
 
         # --- текст справа, строго в рамке легенды ---
         out.append(
@@ -249,11 +262,12 @@ def create_workspace_wor(
     workspace_dir: Path,
     cadnum: str,
     has_oks: bool = False,
+    has_oks_labels: bool = False,
     zouit_files: Optional[List[Tuple[Path, Path]]] = None,
     has_zouit_labels: bool = False,
     zouit_legend_items: Optional[List[Tuple[str, str]]] = None,
     zouit_list: Optional[list] = None,  # данные workspace.zouit для легенды
-    red_lines_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB",
+    red_lines_path: str = None,
     use_absolute_paths: bool = False,
     address: Optional[str] = None,           # Адрес участка из выписки ЕГРН
     specialist_name: Optional[str] = None,    # ФИО специалиста из учётки
@@ -301,6 +315,14 @@ def create_workspace_wor(
     # Относительный путь к папке со слоями
     layers_subdir = "База_проекта"
 
+    if red_lines_path is None:
+        red_lines_path = os.getenv("RED_LINES_PATH")
+
+    layer_labels = os.getenv("LAYER_LABELS")
+    layer_roads = os.getenv("LAYER_ROADS")
+    layer_buildings = os.getenv("LAYER_BUILDINGS")
+    layer_actual_land = os.getenv("LAYER_ACTUAL_LAND")
+
     # Текущая дата для штампа
     current_date = datetime.now().strftime("%d.%m.%Y")
 
@@ -345,6 +367,9 @@ def create_workspace_wor(
     # 1. ОКС (если есть) - самый нижний слой
     if has_oks:
         map1_layers.append("окс")
+    
+    if has_oks_labels:
+        map1_layers.append("подписи_окс")
 
     # 2. Точки участка
     map1_layers.append("участок_точки")
@@ -404,6 +429,7 @@ def create_workspace_wor(
 
     if has_oks:
         wor_content += f'Open Table "{layers_subdir}\\\\окс.TAB" As окс Interactive\n'
+        wor_content += f'Open Table "{layers_subdir}\\\\подписи_окс.TAB" As подписи_окс Interactive\n'
 
     # Открываем каждый файл ЗОУИТ
     if zouit_files:
@@ -419,11 +445,11 @@ def create_workspace_wor(
     # Открываем красные линии
     wor_content += f'Open Table "{red_lines_path}" As Красные_линии Interactive\n'
 
-    # Открываем внешние слои для карты 2
-    for layer_path in situation_layers:
-        if layer_path.exists():
-            layer_name = layer_path.stem
-            wor_content += f'Open Table "{layer_path}" As {layer_name} Interactive\n'
+    # Открываем внешние слои для карты 2 (серверные пути из .env)
+    wor_content += f'Open Table "{layer_labels}" As Подписи Interactive\n'
+    wor_content += f'Open Table "{layer_roads}" As Проезды Interactive\n'
+    wor_content += f'Open Table "{layer_buildings}" As Строения Interactive\n'
+    wor_content += f'Open Table "{layer_actual_land}" As ACTUAL_LAND Interactive\n'
 
     # ========== КАРТА 1: Градостроительный план ========== #
 
@@ -451,77 +477,88 @@ map1WindowID = FrontWindow()
     if has_oks:
         wor_content += f'''Set Map
   Layer {layer_index}
-    Display Graphic
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+    Display Global
+    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,0,17) Line (1,2,0) Font ("Arial CYR",0,10,0)
+'''
+        layer_index += 1
+
+    # ✅ СЛОЙ: подписи_окс — номер ОКС в кружочке
+    if has_oks_labels:
+        wor_content += f'''Set Map
+  Layer {layer_index}
+    Display Global
+    Global Pen (1,2,0)
+    Label Line None Position Center Font ("Arial CYR",513,10,0,16777215) Pen (1,2,0)
+      With Номер
+      Parallel On Auto Off Overlap Off Duplicates Off Offset 0
+    Visibility On
 '''
         layer_index += 1
 
     # ✅ СЛОЙ: Точки участка (КРАСНЫЕ КРУЖКИ С ПОДПИСЯМИ)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-    Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0) 
-      With Номер_точки
-      Parallel On Auto Off Overlap Off Duplicates On Offset 4
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (34,16711680,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+        Label Line None Position Right Font ("Arial CYR",256,9,16711680,16777215) Pen (1,2,0)
+          With Номер_точки
+          Parallel On Auto Off Overlap Off Duplicates On Offset 4
+          Visibility On
 '''
     layer_index += 1
 
     # ✅ СЛОЙ: Зона строительства (КРАСНАЯ ШТРИХОВКА)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (1,2,16711680) Brush (44,16711680) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-    Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With Кадастровый_номе
-      Parallel On Auto Off Overlap Off Duplicates On Offset 2
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,16711680) Brush (44,16711680) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+        Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0)
+          With Кадастровый_номер
+          Parallel On Auto Off Overlap Off Duplicates On Offset 2
+          Visibility On
 '''
     layer_index += 1
 
-    # ✅ СЛОИ: ЗОУИТ (ЧЁРНЫЕ ЛИНИИ БЕЗ ЗАЛИВКИ, БЕЗ ПОДПИСЕЙ)
-    if zouit_files:
+    # ЗОУИТ — индивидуальные стили из справочника
+    if zouit_files and zouit_list:
         for i, (mif_path, _) in enumerate(zouit_files):
+            z = zouit_list[i]
+            zouit_name = getattr(z, "name", "") or ""
+            style = get_zouit_style(zouit_name)
+            style_global = style_to_layer_global(style)
+
             wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (1,2,0) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+    Layer {layer_index}
+        Display Global
+        {style_global} Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
 '''
             layer_index += 1
 
     # ✅ СЛОЙ: Подписи ЗОУИТ (НЕВИДИМЫЕ ТОЧКИ С ПОДПИСЯМИ)
     if has_zouit_labels:
         wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Symbol (31,0,0)
-    Label Line None Position Center Font ("Arial CYR",256,10,0,16777215) Pen (1,2,0) 
-      With Реестровый_номер
-      Parallel On Auto On Overlap Off Duplicates On Offset 2
-      Visibility On
+    Layer {layer_index}
+        Display Global
+        Global Symbol (31,0,0)
+        Label Line None Position Center Font ("Arial CYR",256,10,0,16777215) Pen (1,2,0)
+          With Реестровый_номер
+          Parallel On Auto On Overlap Off Duplicates On Offset 2
+          Visibility On
 '''
         layer_index += 1
 
     # ✅ СЛОЙ: Красные линии (СТИЛЬ ИЗ ИСХОДНОГО ФАЙЛА)
     wor_content += f'''Set Map
-        Layer {layer_index}
-            Display Graphic
-    '''
+    Layer {layer_index}
+        Display Graphic
+'''
     layer_index += 1
 
     # ✅ СЛОЙ: Участок (КРАСНАЯ ЖИРНАЯ ЛИНИЯ)
     wor_content += f'''Set Map
-  Layer {layer_index}
-    Display Global
-    Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
-'''
-
-    # (как было) – принтерный блок после карты 1
-    wor_content += '''Set Map Layer 1 Editable
-Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
- Papersize 9
+    Layer {layer_index}
+        Display Global
+        Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
 '''
 
     # ========== КАРТА 2: Ситуационный план ========== #
@@ -546,7 +583,7 @@ Set Map
     Display Global
     Global Pen (17,2,16711680) Brush (1,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
     Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With Кадастровый_номе
+      With Кадастровый_номер
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
 '''
@@ -563,7 +600,7 @@ Set Map
     Display Graphic
     Global Pen (1,2,0) Brush (2,16777215,16777215) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
     Label Line None Position Center Font ("Arial CYR",0,9,0) Pen (1,2,0) 
-      With type
+      With Кадастровый_номер
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
   Layer 4
@@ -580,12 +617,6 @@ Set Map
       With Дорога
       Parallel On Auto Off Overlap Off Duplicates On Offset 2
       Visibility On
-'''
-
-    # (как было) – принтерный блок после карты 2
-    wor_content += '''Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
- Papersize 9
 '''
 
     # ========== LAYOUTS: 3 отчёта из файлов-шаблонов ========== #

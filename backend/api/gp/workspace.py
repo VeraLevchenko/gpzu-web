@@ -1,4 +1,3 @@
-# backend/api/gp/workspace.py
 """
 API endpoints для создания рабочего набора MapInfo.
 
@@ -11,7 +10,7 @@ API endpoints для создания рабочего набора MapInfo.
 - Скачивание ZIP архива
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 import logging
 import io
@@ -30,9 +29,11 @@ from generator.mif_writer import (
     create_zouit_labels_mif,
     create_workspace_directory,
     get_project_base_dir,
+    create_oks_labels_mif
 )
 from generator.mif_to_tab_converter import convert_all_mif_to_tab
 from generator.wor_builder import create_workspace_wor
+from api.auth import verify_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,10 @@ router = APIRouter(prefix="/api/gp/workspace", tags=["workspace"])
 
 
 @router.post("/create")
-async def create_workspace(file: UploadFile = File(...)):
+async def create_workspace(
+    file: UploadFile = File(...),
+    user: dict  = Depends(verify_credentials),
+):
     """
     Создание полного рабочего набора MapInfo из выписки ЕГРН.
     
@@ -106,6 +110,17 @@ async def create_workspace(file: UploadFile = File(...)):
             result_oks = create_oks_mif(workspace.capital_objects, project_base)
             has_oks = result_oks is not None
         
+        # ✅ ДОБАВЛЕНО: слой подписей ОКС (точки в центре пересечения ОКС с участком)
+        has_oks_labels = False
+        if has_oks and workspace.parcel.geometry:
+            result_oks_labels = create_oks_labels_mif(
+                capital_objects=workspace.capital_objects,
+                parcel_geometry=workspace.parcel.geometry,
+                output_dir=project_base,
+                filename="подписи_окс",
+            )
+            has_oks_labels = result_oks_labels is not None
+        
         zouit_files = None
         has_zouit_labels = False
         if workspace.zouit:
@@ -133,11 +148,12 @@ async def create_workspace(file: UploadFile = File(...)):
             workspace_dir=workspace_dir,
             cadnum=workspace.parcel.cadnum,
             has_oks=has_oks,
+            has_oks_labels=has_oks_labels,
             zouit_files=zouit_files,
             has_zouit_labels=has_zouit_labels,
             address=workspace.parcel.address,
             area=workspace.parcel.area,  # ✅ ДОБАВЛЕНО: площадь из ЕГРН
-            specialist_name="Ляпина К.С.",
+            specialist_name=(user.get("fio") or user.get("username") or ""),
             zouit_list=workspace.zouit,
         )
         

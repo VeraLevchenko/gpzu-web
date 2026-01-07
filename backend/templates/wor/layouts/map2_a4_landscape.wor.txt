@@ -1,5 +1,5 @@
 Set Window FrontWindow() Printer
- Name "PDF24" Orientation Landscape Copies 1
+ Name "MapInfo PDF Printer Version 15.0" Orientation Landscape Copies 1
  Papersize 66
 Dim WorkspaceMaximizedWindow As Integer
 WorkspaceMaximizedWindow = Frontwindow()
@@ -172,8 +172,5 @@ Layout
   Set Window FrontWindow() Autoscroll On Snap Mode On Enhanced On Smooth Text Antialias Image High
   Run Command uniqueStringName
   Undim uniqueStringName
-Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
- Papersize 9
 Set Window WorkspaceMaximizedWindow Max
 Undim WorkspaceMaximizedWindow

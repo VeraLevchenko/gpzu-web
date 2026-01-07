@@ -1,5 +1,5 @@
 Set Window FrontWindow() Printer
- Name "PDF24" Orientation Portrait Copies 1
+ Name "MapInfo PDF Printer Version 15.0" Orientation Landscape Copies 1
  Papersize 9
 Layout
   Position (0.0520833,0.0520833) Units "in"
@@ -22,7 +22,7 @@ Layout
 (16.2979,0.2396)
 (16.2979,11.5306)
     Pen (2,2,0) 
-  Create Rect (9.0000,8.8035) (16.2063,9.2937)
+  Create Rect (8.8438,7.9965) (16.2813,9.2937)
     Pen (1,2,16777215) 
     Brush (2,16777215)
   Create Text

@@ -12,8 +12,9 @@ import './UserHeader.css';
  * - title: заголовок страницы (опционально)
  * - showBackButton: показывать ли кнопку "Назад" (по умолчанию false)
  * - onBack: обработчик кнопки "Назад" (если не указан - возврат на главную)
+ * - backPath: путь для кнопки "Назад" (если не указан onBack)
  */
-const UserHeader = ({ title, showBackButton = false, onBack }) => {
+const UserHeader = ({ title, showBackButton = false, onBack, backPath }) => {
   const [username, setUsername] = useState('');
   const navigate = useNavigate();
 
@@ -45,6 +46,8 @@ const UserHeader = ({ title, showBackButton = false, onBack }) => {
   const handleBack = () => {
     if (onBack) {
       onBack();
+    } else if (backPath) {
+      navigate(backPath);
     } else {
       navigate('/');
     }

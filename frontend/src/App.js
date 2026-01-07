@@ -5,6 +5,7 @@ import ruRU from 'antd/locale/ru_RU';
 import LoginForm from './components/Auth/LoginForm';
 import Home from './pages/Home';
 import GP from './pages/GP';
+import Journals from './pages/Journals';
 import KaitenFlow from './components/GP/KaitenFlow';
 import MidMifFlow from './components/GP/MidMifFlow';
 import TuFlow from './components/GP/TuFlow';
@@ -36,6 +37,7 @@ function App() {
           <Route path="/login" element={<LoginForm />} />
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/gp" element={<ProtectedRoute><GP /></ProtectedRoute>} />
+          <Route path="/journals" element={<ProtectedRoute><Journals /></ProtectedRoute>} />
           <Route path="/gp/kaiten" element={<ProtectedRoute><KaitenFlow /></ProtectedRoute>} />
           <Route path="/gp/midmif" element={<ProtectedRoute><MidMifFlow /></ProtectedRoute>} />
           <Route path="/gp/tu" element={<ProtectedRoute><TuFlow /></ProtectedRoute>} />

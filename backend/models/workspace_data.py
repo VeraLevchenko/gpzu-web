@@ -27,6 +27,7 @@ class ParcelLayer:
     area: Optional[float] = None                   # Площадь в кв.м
     address: Optional[str] = None                  # Адрес
     geometry: Optional[Polygon] = None             # Геометрия Shapely
+    numbered_contours: Optional[List[List[Any]]] = None  # ← ДОБАВИТЬ ЭТУ СТРОКУ
     
     def __post_init__(self):
         """Создаем геометрию из координат если не задана"""
