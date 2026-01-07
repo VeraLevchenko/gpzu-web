@@ -491,7 +491,7 @@ map1WindowID = FrontWindow()
     Label Line None Position Center Font ("Arial CYR",513,10,0,16777215) Pen (1,2,0)
       With Номер
       Parallel On Auto Off Overlap Off Duplicates Off Offset 0
-      Visibility On
+    Visibility On
 '''
         layer_index += 1
 

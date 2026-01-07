@@ -1,6 +1,6 @@
 Set Window FrontWindow() Printer
  Name "MapInfo PDF Printer Version 15.0" Orientation Landscape Copies 1
- Papersize 10
+ Papersize 66
 Dim WorkspaceMaximizedWindow As Integer
 WorkspaceMaximizedWindow = Frontwindow()
 Layout
