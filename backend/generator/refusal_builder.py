@@ -13,9 +13,20 @@ from models.refusal import Refusal, get_next_refusal_number
 logger = logging.getLogger("gpzu-web.refusal_builder")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATE_PATH = BASE_DIR / "templates" / "refusal_template.docx"
+TEMPLATES_DIR = BASE_DIR / "templates" / "refusal"
 ATTACHMENTS_DIR = BASE_DIR / "uploads" / "attachments" / "refusals"
 ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Маппинг: код причины → файл шаблона
+TEMPLATE_FILES = {
+    "NO_RIGHTS": "refusal_no_rights.docx",
+    "NO_BORDERS": "refusal_no_borders.docx",
+    "NOT_IN_CITY": "refusal_not_in_city.docx",
+    "OBJECT_NOT_EXISTS": "refusal_object_not_exists.docx",
+    "HAS_ACTIVE_GP": "refusal_has_active_gp.docx",
+}
+
+
 
 REASON_TEXTS = {
     "NO_RIGHTS": (
@@ -74,10 +85,12 @@ def get_or_create_application(context: Dict[str, Any], db_session) -> Tuple[int,
         return existing.id, False
     
     logger.info(f"📝 Создаем новое заявление #{app_number}")
+
+    app_date = app_data.get('date_formatted') or app_data.get('date', '')
     
     application = Application(
         number=app_number,
-        date=app_data.get('date', ''),
+        date=app_date,
         applicant=app_data.get('applicant', ''),
         phone=app_data.get('phone', '—'),
         email=app_data.get('email', '—'),
@@ -99,8 +112,51 @@ def save_refusal_to_database(context: Dict[str, Any], application_id: int, db_se
     """Сохраняет отказ в БД и возвращает ID записи."""
     refusal_data = context.get('refusal', {})
     
+    # Проверяем, есть ли уже отказ для этого заявления
+    existing_refusal = db_session.query(Refusal).filter(Refusal.application_id == application_id).first()
+    
+    if existing_refusal:
+        logger.warning(f"⚠️ Для заявления ID={application_id} уже есть отказ ID={existing_refusal.id}")
+        logger.info(f"🔄 Обновляем существующий отказ вместо создания нового")
+        
+        # Обновляем существующий отказ
+        date_str = refusal_data.get('date', '')
+        try:
+            out_date_obj = datetime.strptime(date_str, '%d.%m.%Y')
+        except ValueError:
+            logger.warning(f"⚠️ Неожиданный формат даты: {date_str}, используем текущую дату")
+            out_date_obj = datetime.now()
+        
+        out_date_str = out_date_obj.strftime('%d.%m.%Y')
+        out_year = out_date_obj.year
+        
+        reason_code = refusal_data.get('reason_code', 'NO_RIGHTS')
+        reason_text = REASON_TEXTS.get(reason_code, '')
+        
+        # Обновляем поля
+        existing_refusal.out_date = out_date_str
+        existing_refusal.out_year = out_year
+        existing_refusal.reason_code = reason_code
+        existing_refusal.reason_text = reason_text
+        
+        db_session.flush()
+        
+        logger.info(f"✅ Отказ обновлен (ID: {existing_refusal.id}, исх. №{existing_refusal.out_number})")
+        return existing_refusal.id
+    
+    # Если отказа нет, создаём новый
     out_number = get_next_refusal_number(db_session)
-    out_date_obj = datetime.strptime(refusal_data.get('date', ''), '%d.%m.%Y')
+    
+    # Получаем дату и очищаем от лишних символов
+    date_str = refusal_data.get('date', '')
+    
+    # Парсим дату
+    try:
+        out_date_obj = datetime.strptime(date_str, '%d.%m.%Y')
+    except ValueError:
+        logger.warning(f"⚠️ Неожиданный формат даты: {date_str}, используем текущую дату")
+        out_date_obj = datetime.now()
+    
     out_date_str = out_date_obj.strftime('%d.%m.%Y')
     out_year = out_date_obj.year
     
@@ -169,11 +225,28 @@ def build_refusal_doc(context: Dict[str, Any]) -> Dict[str, Any]:
         
         refusal_id = save_refusal_to_database(context, application_id, db)
         
-        doc = Document(str(TEMPLATE_PATH))
+        # Получаем код причины отказа
+        refusal_data = context.get('refusal', {})
+        reason_code = refusal_data.get('reason_code', 'NO_RIGHTS')
+        
+        # Выбираем нужный шаблон
+        template_filename = TEMPLATE_FILES.get(reason_code)
+        if not template_filename:
+            logger.error(f"❌ Неизвестная причина отказа: {reason_code}")
+            raise Exception(f"Неизвестная причина отказа: {reason_code}")
+        
+        template_path = TEMPLATES_DIR / template_filename
+        
+        # Проверяем наличие шаблона
+        if not template_path.exists():
+            logger.error(f"❌ Шаблон не найден: {template_path}")
+            raise Exception(f"Шаблон отказа не найден: {template_filename}")
+        
+        logger.info(f"📄 Используется шаблон: {template_filename}")
+        doc = Document(str(template_path))
         
         app_data = context.get('application', {})
         egrn_data = context.get('egrn', {})
-        refusal_data = context.get('refusal', {})
         
         app_number = app_data.get('number', '')
         app_date = app_data.get('date', '')
@@ -185,37 +258,117 @@ def build_refusal_doc(context: Dict[str, Any]) -> Dict[str, Any]:
         out_number = db.query(Refusal).filter(Refusal.id == refusal_id).first().out_number
         out_date = refusal_data.get('date', '')
         
-        reason_code = refusal_data.get('reason_code', 'NO_RIGHTS')
         reason_text = REASON_TEXTS.get(reason_code, '')
-        
+        specialist = context.get('specialist', '—')
+
+        # Получаем телефон и email из данных заявления
+        phone = app_data.get('phone', '—')
+        email = app_data.get('email', '—')
+
         replacements = {
             '{{OUT_NUMBER}}': str(out_number),
+            '{{OUT_NUM}}': str(out_number),  # Добавлен альтернативный плейсхолдер
             '{{OUT_DATE}}': out_date,
             '{{APP_NUMBER}}': app_number,
             '{{APP_DATE}}': app_date,
             '{{APPLICANT}}': applicant,
+            '{{PHONE}}': phone,  # Добавлен телефон
+            '{{EMAIL}}': email,  # Добавлен email
             '{{CADNUM}}': cadnum,
             '{{ADDRESS}}': address,
             '{{REASON}}': reason_text,
+            '{{SPECIALIST}}': specialist,
         }
         
-        for paragraph in doc.paragraphs:
+        # Функция замены текста в параграфе
+        def replace_in_paragraph(paragraph, replacements):
+            """Заменяет плейсхолдеры в параграфе."""
+            # Сначала собираем весь текст параграфа
+            full_text = paragraph.text
+            
+            # Проверяем, есть ли что заменять
+            has_placeholder = any(key in full_text for key in replacements.keys())
+            if not has_placeholder:
+                return
+            
+            # Выполняем замену
+            new_text = full_text
             for key, value in replacements.items():
-                if key in paragraph.text:
-                    for run in paragraph.runs:
-                        if key in run.text:
-                            run.text = run.text.replace(key, value)
+                if key in new_text:
+                    new_text = new_text.replace(key, str(value))
+            
+            # Если текст изменился, обновляем параграф
+            if new_text != full_text:
+                # Удаляем все runs
+                for run in paragraph.runs:
+                    run.text = ''
+                
+                # Добавляем новый текст
+                if paragraph.runs:
+                    paragraph.runs[0].text = new_text
+                else:
+                    paragraph.add_run(new_text)
         
+        # Замена в параграфах документа
+        for paragraph in doc.paragraphs:
+            replace_in_paragraph(paragraph, replacements)
+        
+        # Замена в таблицах
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
-                        for key, value in replacements.items():
-                            if key in paragraph.text:
-                                for run in paragraph.runs:
-                                    if key in run.text:
-                                        run.text = run.text.replace(key, value)
+                        replace_in_paragraph(paragraph, replacements)
+
+        # Замена в колонтитулах (headers и footers)
+        logger.info("🔍 Начинаем замену в колонтитулах...")
+        for section_idx, section in enumerate(doc.sections):
+            logger.info(f"  Секция {section_idx}:")
+            
+            # Замена в верхних колонтитулах
+            header_count = 0
+            for para in section.header.paragraphs:
+                if para.text.strip():
+                    logger.info(f"    Header paragraph: '{para.text[:50]}'")
+                    replace_in_paragraph(para, replacements)
+                    header_count += 1
+            
+            for table in section.header.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            if para.text.strip():
+                                logger.info(f"    Header table cell: '{para.text[:50]}'")
+                                replace_in_paragraph(para, replacements)
+                                header_count += 1
+            
+            logger.info(f"    Header: обработано {header_count} элементов")
+            
+            # Замена в нижних колонтитулах
+            footer_count = 0
+            for para in section.footer.paragraphs:
+                if para.text.strip():
+                    logger.info(f"    Footer paragraph: '{para.text[:50]}'")
+                    if '{{SPECIALIST}}' in para.text:
+                        logger.info(f"      ⚠️ Найден {{{{SPECIALIST}}}} в тексте!")
+                    replace_in_paragraph(para, replacements)
+                    logger.info(f"      После замены: '{para.text[:50]}'")
+                    footer_count += 1
+            
+            for table in section.footer.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            if para.text.strip():
+                                logger.info(f"    Footer table cell: '{para.text[:50]}'")
+                                replace_in_paragraph(para, replacements)
+                                footer_count += 1
+            
+            logger.info(f"    Footer: обработано {footer_count} элементов")
+
+        logger.info("✅ Замена в колонтитулах завершена")
         
+        # Сохранение документа
         docx_buffer = io.BytesIO()
         doc.save(docx_buffer)
         docx_buffer.seek(0)
@@ -238,6 +391,8 @@ def build_refusal_doc(context: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Ошибка генерации отказа: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise
     finally:
         db.close()

@@ -44,6 +44,7 @@ async def parse_application(file: UploadFile = File(...)):
             "number": app_data.number,
             "date": app_data.date.strftime('%Y-%m-%d') if isinstance(app_data.date, date) else str(app_data.date) if app_data.date else None,
             "date_text": app_data.date_text,
+            "date_formatted": app_data.date_formatted,
             "applicant": app_data.applicant,
             "cadnum": app_data.cadnum,
             "purpose": app_data.purpose,

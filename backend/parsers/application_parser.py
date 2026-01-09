@@ -28,6 +28,7 @@ class ApplicationData:
     number: Optional[str] = None          # номер заявления
     date: Optional[date] = None           # дата заявления (объект date)
     date_text: Optional[str] = None       # строка даты, как в документе
+    date_formatted: Optional[str] = None  # === НОВОЕ === дата в формате DD.MM.YYYY
     applicant: Optional[str] = None       # заявитель (ФИО или наименование ЮЛ)
     cadnum: Optional[str] = None          # кадастровый номер ЗУ
     purpose: Optional[str] = None         # цель использования ЗУ
@@ -282,10 +283,15 @@ def parse_application_docx(doc_bytes: bytes) -> ApplicationData:
     if app_date:
         service_date = add_working_days(app_date, days=14)
 
+    date_formatted: Optional[str] = None
+    if app_date:
+        date_formatted = app_date.strftime('%d.%m.%Y')
+
     return ApplicationData(
         number=number,
         date=app_date,
         date_text=date_text,
+        date_formatted=date_formatted,
         applicant=applicant,
         cadnum=cadnum,
         purpose=purpose,

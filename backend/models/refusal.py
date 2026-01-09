@@ -37,8 +37,9 @@ class Refusal(Base):
     __table_args__ = (
         UniqueConstraint('out_year', 'out_number', name='uq_refusal_year_number'),
     )
-    
+
     def to_dict(self):
+        """Преобразовать в словарь для API"""
         return {
             "id": self.id,
             "application_id": self.application_id,
@@ -50,6 +51,15 @@ class Refusal(Base):
             "attachment": self.attachment,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            # Добавляем данные связанного заявления
+            "application": {
+                "id": self.application.id,
+                "number": self.application.number,
+                "date": self.application.date,
+                "applicant": self.application.applicant,
+                "address": self.application.address,
+                "cadnum": self.application.cadnum,
+            } if self.application else None
         }
 
 

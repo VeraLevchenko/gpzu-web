@@ -5,13 +5,14 @@ API endpoints для формирования отказа в выдаче ГП�
 ОБНОВЛЕНО (01.01.2026): Интеграция с БД + уведомления о записи
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 import logging
 import io
 from datetime import datetime
 
 from generator.refusal_builder import build_refusal_doc
+from api.auth import verify_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ async def health_check():
     return {"status": "ok", "service": "refusal"}
 
 @router.post("/generate")
-async def generate_refusal(request: Request):
+async def generate_refusal(request: Request, current_user: dict = Depends(verify_credentials)):
     """
     Генерация документа отказа.
     
@@ -88,13 +89,14 @@ async def generate_refusal(request: Request):
         if reason_code not in REFUSAL_REASONS:
             raise HTTPException(status_code=400, detail="Неверная причина отказа")
         
-        logger.info(f"📝 Генерация отказа для заявления {application.get('number')}, причина: {reason_code}")
+        logger.info(f"📝 Генерация отказа для заявления {application.get('number')}, причина: {reason_code}, специалист: {current_user.get('fio')}")
         
         # Формируем контекст для генератора (в новом формате)
         context = {
             "application": application,
             "egrn": egrn,
-            "refusal": refusal
+            "refusal": refusal,
+            "specialist": current_user.get("fio", current_user.get("username"))  # ФИО или username
         }
         
         # Генерируем документ с записью в БД
@@ -104,22 +106,13 @@ async def generate_refusal(request: Request):
         date_str = datetime.now().strftime('%d-%m-%Y')
         filename = f"Otkaz_{cadnum_safe}_{date_str}.docx"
         
-        # Формируем сообщение для пользователя
-        message = "Отказ успешно сформирован"
-        if result['application_created']:
-            message += ". ✅ Создана запись в журнале заявлений"
-        else:
-            message += ". ℹ️ Использована существующая запись заявления"
-        message += f". ✅ Запись в журнале отказов (ID: {result['refusal_id']})"
-        
-        logger.info(f"✅ {message}")
+        logger.info(f"✅ Отказ успешно сформирован (ID: {result['refusal_id']}, заявление {'создано' if result['application_created'] else 'найдено'})")
         
         return Response(
             content=result['document'],
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "X-Message": message,
                 "X-Application-Created": str(result['application_created']),
                 "X-Refusal-ID": str(result['refusal_id'])
             }
