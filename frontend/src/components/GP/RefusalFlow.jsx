@@ -45,7 +45,7 @@ const REFUSAL_REASONS = [
   {
     code: 'OBJECT_NOT_EXISTS',
     title: 'Объект отсутствует на кадастровом учёте',
-    description: 'Объект капитального строительства не зарегистрирован в ЕГРН'
+    description: 'Земельный участок с таким кадастровым номером отсутствует в ЕГРН'
   },
   {
     code: 'HAS_ACTIVE_GP',
@@ -87,7 +87,7 @@ const RefusalFlow = () => {
       // === ИСПРАВЛЕНО: Сохраняем ВСЕ поля включая phone и email === //
       setApplicationData({
         number: data.number || '',
-        date: data.date_text || data.date || '',
+        date: data.date_formatted || data.date_text || data.date || '',
         applicant: data.applicant || '',
         cadnum: data.cadnum || '',
         purpose: data.purpose || '',
@@ -171,11 +171,21 @@ const RefusalFlow = () => {
       console.log('  Application:', applicationData);
       console.log('  EGRN:', egrnData);
       console.log('  Reason:', selectedReason.code);
-      
+
+      // Формируем дату в формате ДД.ММ.ГГГГ
+      const today = new Date();
+      const day = String(today.getDate()).padStart(2, '0');
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const year = today.getFullYear();
+      const formattedDate = `${day}.${month}.${year}`;
+
       const requestData = {
-        application: applicationData,  // === Здесь уже есть phone и email === //
+        application: applicationData,
         egrn: egrnData,
-        reason_code: selectedReason.code
+        refusal: {
+          date: formattedDate,  // Формат: 08.01.2026
+          reason_code: selectedReason.code
+        }
       };
       
       console.log('📤 Полный запрос:', JSON.stringify(requestData, null, 2));

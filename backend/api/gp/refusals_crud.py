@@ -4,8 +4,9 @@ CRUD API для работы с журналом отказов.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse, FileResponse
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, String
 from typing import Optional
 from pathlib import Path
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ import io
 
 from database import get_db
 from models.refusal import Refusal
+from models.application import Application
 
 router = APIRouter(prefix="/api/gp/refusals", tags=["refusals"])
 ATTACHMENTS_DIR = Path("./uploads/attachments/refusals")
@@ -28,28 +30,43 @@ class RefusalUpdate(BaseModel):
     application_id: Optional[int] = None
 
 
-@router.get("")
+@router.get("/")
 async def get_refusals(
-    skip: int = 0,
-    limit: int = 100,
-    year: Optional[int] = None,
+    page: int = 1, 
+    page_size: int = 20,
+    search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Refusal)
-    if year:
-        query = query.filter(Refusal.out_year == year)
+    """Получить список отказов с поиском по всем полям"""
+    query = db.query(Refusal).join(Application, Refusal.application_id == Application.id).options(joinedload(Refusal.application))
+    
+    # Если есть поисковый запрос, фильтруем
+    if search:
+        search_filter = or_(
+            Refusal.out_number.cast(String).ilike(f"%{search}%"),
+            Refusal.out_date.ilike(f"%{search}%"),
+            Application.number.ilike(f"%{search}%"),
+            Application.date.ilike(f"%{search}%"),
+            Application.applicant.ilike(f"%{search}%"),
+            Application.address.ilike(f"%{search}%"),
+            Application.cadnum.ilike(f"%{search}%"),
+            Refusal.reason_code.ilike(f"%{search}%")
+        )
+        query = query.filter(search_filter)
+    
     total = query.count()
-    items = query.order_by(Refusal.created_at.desc()).offset(skip).limit(limit).all()
+    refusals = query.order_by(Refusal.out_number.desc()).offset((page - 1) * page_size).limit(page_size).all()
     
-    # Формируем результат с данными заявления
-    result_items = []
-    for item in items:
-        item_dict = item.to_dict()
-        if item.application:
-            item_dict["application"] = item.application.to_dict()
-        result_items.append(item_dict)
-    
-    return {"total": total, "items": result_items, "skip": skip, "limit": limit}
+    return {
+        "success": True,
+        "data": [r.to_dict() for r in refusals],
+        "pagination": {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size
+        }
+    }
 
 
 @router.get("/{refusal_id}")
@@ -70,6 +87,22 @@ async def update_refusal(refusal_id: int, data: RefusalUpdate, db: Session = Dep
         raise HTTPException(status_code=404, detail="Отказ не найден")
     
     update_data = data.dict(exclude_unset=True)
+    
+    # === НОВАЯ ПРОВЕРКА: application_id === #
+    if 'application_id' in update_data:
+        new_application_id = update_data['application_id']
+        if new_application_id != refusal.application_id:
+            # Проверяем, нет ли уже отказа для этого заявления
+            existing = db.query(Refusal).filter(
+                Refusal.application_id == new_application_id,
+                Refusal.id != refusal_id
+            ).first()
+            
+            if existing:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"К заявлению уже привязан другой отказ (ID: {existing.id}, исх. №{existing.out_number})"
+                )
     
     # Проверка уникальности номера если изменяется
     if 'out_number' in update_data or 'out_year' in update_data:
@@ -149,19 +182,83 @@ async def delete_attachment(refusal_id: int, db: Session = Depends(get_db)):
 async def export_to_excel(year: Optional[int] = None, db: Session = Depends(get_db)):
     from datetime import datetime
     from openpyxl import Workbook
+    
     if year is None:
         year = datetime.now().year
+    
     refusals = db.query(Refusal).filter(Refusal.out_year == year).order_by(Refusal.out_number).all()
+    
     wb = Workbook()
     ws = wb.active
-    ws.title = f"Отказы {year}"
-    headers = ["Исходящий номер", "Исходящая дата", "Номер заявления", "Заявитель", "Кадастровый номер", "Причина"]
+    ws.title = f"Otkazy {year}"
+    
+    # Заголовки как в журнале
+    headers = [
+        "Исх. №",
+        "Исх. дата", 
+        "Номер заявления",
+        "Дата заявления",
+        "Заявитель",
+        "Адрес",
+        "Кадастровый номер",
+        "Причина отказа"
+    ]
     ws.append(headers)
+    
+    # Маппинг кодов причин на русские названия
+    reason_labels = {
+        'NO_RIGHTS': 'Нет прав на участок',
+        'NO_BORDERS': 'Границы не установлены',
+        'NOT_IN_CITY': 'Не в городе',
+        'OBJECT_NOT_EXISTS': 'Объект не существует',
+        'HAS_ACTIVE_GP': 'Есть действующий ГП',
+    }
+    
+    # Заполняем данные
     for r in refusals:
         app = r.application
-        ws.append([r.out_number, r.out_date, app.number if app else "", app.applicant if app else "", app.cadnum if app else "", r.reason_code])
+        ws.append([
+            r.out_number,
+            r.out_date,
+            app.number if app else "—",
+            app.date if app else "—",
+            app.applicant if app else "—",
+            app.address if app else "—",
+            app.cadnum if app else "—",
+            reason_labels.get(r.reason_code, r.reason_code)
+        ])
+    
     excel_buffer = io.BytesIO()
     wb.save(excel_buffer)
     excel_buffer.seek(0)
-    filename = f"Журнал_отказов_{year}.xlsx"
-    return StreamingResponse(excel_buffer, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    
+    filename = f"Refusals_{year}.xlsx"
+    return StreamingResponse(
+        excel_buffer, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+@router.get("/{refusal_id}/download")
+async def download_refusal_attachment(refusal_id: int, db: Session = Depends(get_db)):
+    """Скачать вложение отказа"""
+    refusal = db.query(Refusal).filter(Refusal.id == refusal_id).first()
+    if not refusal:
+        raise HTTPException(status_code=404, detail="Отказ не найден")
+    if not refusal.attachment:
+        raise HTTPException(status_code=404, detail="Вложение отсутствует")
+    
+    attachment_path = Path(refusal.attachment)
+    if not attachment_path.exists():
+        raise HTTPException(status_code=404, detail="Файл не найден на сервере")
+    
+    # Формируем имя файла для скачивания
+    app = refusal.application
+    cadnum_safe = app.cadnum.replace(":", "_") if app else "unknown"
+    filename = f"Otkaz_{cadnum_safe}_{refusal.out_date.replace('.', '-')}.docx"
+    
+    return FileResponse(
+        path=str(attachment_path),
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
