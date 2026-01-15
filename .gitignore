@@ -80,3 +80,10 @@ logs/
 # ========================================
 create_all_frontend.sh
 frontend/create_all_components.sh
+
+# Excel файлы
+*.xlsx
+*.xls
+*.xlsm
+*.xlsx.lock
+*.xls.lock
