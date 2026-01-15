@@ -1,11 +1,13 @@
 # parsers/application_parser.py
 """
-ОБНОВЛЁННАЯ ВЕРСИЯ с поддержкой телефона и email
+ОБНОВЛЁННАЯ ВЕРСИЯ с поддержкой телефона, email и расчётом рабочих дней с учётом праздников
 
 ИЗМЕНЕНИЯ:
 - Добавлено поле phone: Optional[str] = None
 - Добавлено поле email: Optional[str] = None
+- Добавлено поле date_formatted: Optional[str] = None
 - Добавлена функция _extract_phone_and_email_from_paragraphs()
+- Расчёт рабочих дней теперь учитывает праздники из holidays.json
 - Обратная совместимость: старые модули не сломаются (поля опциональные)
 """
 from __future__ import annotations
@@ -13,9 +15,61 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from io import BytesIO
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Set
 import re
+import json
+from pathlib import Path
 from docx import Document
+
+
+# ======================= ЗАГРУЗКА ПРАЗДНИЧНЫХ ДНЕЙ ======================= #
+
+def load_holidays() -> Set[str]:
+    """
+    Загружает список праздничных дней из holidays.json
+    
+    Returns:
+        Множество строк с датами в формате 'YYYY-MM-DD'
+    """
+    holidays_file = Path(__file__).parent / 'holidays.json'
+    
+    try:
+        with open(holidays_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return set(data.get('holidays', []))
+    except Exception as e:
+        # Если файл не найден или повреждён, возвращаем пустое множество
+        # Расчёт будет работать только с выходными (сб/вс)
+        print(f"Предупреждение: не удалось загрузить holidays.json: {e}")
+        return set()
+
+
+# Загружаем праздники при импорте модуля
+RUSSIAN_HOLIDAYS = load_holidays()
+
+
+def is_working_day(check_date: date) -> bool:
+    """
+    Проверяет, является ли день рабочим.
+    
+    Рабочий день = не суббота, не воскресенье и не праздник.
+    
+    Args:
+        check_date: Дата для проверки
+    
+    Returns:
+        True если день рабочий, False если выходной или праздник
+    """
+    # Проверяем выходные (суббота=5, воскресенье=6)
+    if check_date.weekday() in (5, 6):
+        return False
+    
+    # Проверяем праздники
+    date_str = check_date.strftime('%Y-%m-%d')
+    if date_str in RUSSIAN_HOLIDAYS:
+        return False
+    
+    return True
 
 
 @dataclass
@@ -23,12 +77,12 @@ class ApplicationData:
     """
     Результат разбора заявления.
     
-    ОБНОВЛЕНО: Добавлены поля phone и email
+    ОБНОВЛЕНО: Добавлены поля phone, email и date_formatted
     """
     number: Optional[str] = None          # номер заявления
     date: Optional[date] = None           # дата заявления (объект date)
     date_text: Optional[str] = None       # строка даты, как в документе
-    date_formatted: Optional[str] = None  # === НОВОЕ === дата в формате DD.MM.YYYY
+    date_formatted: Optional[str] = None  # дата в формате DD.MM.YYYY
     applicant: Optional[str] = None       # заявитель (ФИО или наименование ЮЛ)
     cadnum: Optional[str] = None          # кадастровый номер ЗУ
     purpose: Optional[str] = None         # цель использования ЗУ
@@ -41,15 +95,22 @@ class ApplicationData:
 
 # ------------------------- ВСПОМОГАТЕЛЬНЫЕ ------------------------- #
 
-def add_working_days(start_date: date, days: int = 14) -> date:
+def add_working_days(start_date: date, days: int = 13) -> date:
     """
     Добавляет N рабочих дней к дате, считая с самой даты (если она рабочая).
-    Выходные: суббота/воскресенье. Праздники не учитываем.
+    Учитывает выходные (суббота/воскресенье) и российские праздники из holidays.json.
+    
+    Args:
+        start_date: Начальная дата
+        days: Количество рабочих дней для добавления (по умолчанию 14, включая день подачи заявления)
+    
+    Returns:
+        Дата после добавления N рабочих дней
     """
     d = start_date
     count = 0
     while True:
-        if d.weekday() < 5:  # 0–4 = пн–пт
+        if is_working_day(d):
             count += 1
             if count >= days:
                 return d
@@ -266,23 +327,26 @@ def parse_application_docx(doc_bytes: bytes) -> ApplicationData:
     Парсер заявления, заточенный под типовую форму "Заявление о выдаче ГПЗУ"
     (как в присланных примерах: всё основное в таблицах).
     
-    ОБНОВЛЕНО: Теперь извлекает телефон и email из параграфов
+    ОБНОВЛЕНО: 
+    - Извлекает телефон и email из параграфов
+    - Рассчитывает 14 рабочих дней с учётом праздников из holidays.json
     """
     doc = _load_doc(doc_bytes)
 
-    # Извлекаем данные из таблиц (КАК РАНЬШЕ)
+    # Извлекаем данные из таблиц
     number, app_date, date_text = _extract_number_and_date_from_tables(doc)
     applicant = _extract_applicant_from_tables(doc)
     cadnum, purpose = _extract_cadnum_and_purpose_from_tables(doc)
 
-    # === НОВОЕ: Извлекаем телефон и email === #
+    # Извлекаем телефон и email
     phone, email = _extract_phone_and_email_from_paragraphs(doc)
 
-    # Рассчитываем дату оказания услуги
+    # Рассчитываем дату оказания услуги (14 рабочих дней с учётом праздников)
     service_date: Optional[date] = None
     if app_date:
         service_date = add_working_days(app_date, days=14)
 
+    # Форматируем дату
     date_formatted: Optional[str] = None
     if app_date:
         date_formatted = app_date.strftime('%d.%m.%Y')
@@ -296,7 +360,6 @@ def parse_application_docx(doc_bytes: bytes) -> ApplicationData:
         cadnum=cadnum,
         purpose=purpose,
         service_date=service_date,
-        # === НОВЫЕ ПОЛЯ === #
         phone=phone,
         email=email,
     )
