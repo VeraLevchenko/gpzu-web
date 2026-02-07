@@ -1,0 +1,27 @@
+/* frontend/src/components/RRR/RRRList.css */
+
+.rrr-list-container {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.rrr-list-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.rrr-list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.rrr-list-content .ant-table-wrapper {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}

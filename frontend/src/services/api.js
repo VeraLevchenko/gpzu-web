@@ -191,6 +191,70 @@ export const workspaceApi = {
 };
 
 // ========================================
+// МОДУЛЬ: РРР (Разрешение на Размещение)
+// ========================================
+export const rrrApi = {
+  // Список разрешений
+  getList: (params = {}) => {
+    const { skip = 0, limit = 50, search, status } = params;
+    let url = `/api/rrr/list?skip=${skip}&limit=${limit}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    return api.get(url);
+  },
+
+  // Получить карточку
+  get: (id) => api.get(`/api/rrr/${id}`),
+
+  // Создать разрешение
+  create: (data) => api.post('/api/rrr/create', data),
+
+  // Обновить разрешение
+  update: (id, data) => api.put(`/api/rrr/${id}/update`, data),
+
+  // Удалить разрешение
+  delete: (id) => api.delete(`/api/rrr/${id}/delete`),
+
+  // Парсинг заявления DOCX
+  parseApplication: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/rrr/parse-application', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Парсинг XML схемы границ
+  parseXml: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/rrr/parse-xml', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Пространственный анализ
+  spatialAnalysis: (data) => api.post('/api/rrr/spatial-analysis', data),
+
+  // Создать карточку Kaiten
+  createKaitenCard: (data) => api.post('/api/rrr/kaiten/create', data),
+
+  // Добавить в MapInfo
+  addToMapInfo: (data) => api.post('/api/rrr/mapinfo/add', data),
+
+  // Сгенерировать решение
+  generateDecision: async (permitId) => {
+    const response = await api.post('/api/rrr/decision/generate', { permit_id: permitId }, {
+      responseType: 'blob'
+    });
+    return response;
+  },
+
+  // Справочник видов объектов
+  getObjectTypes: () => api.get('/api/rrr/object-types'),
+};
+
+// ========================================
 // АУТЕНТИФИКАЦИЯ
 // ========================================
 export const authApi = {

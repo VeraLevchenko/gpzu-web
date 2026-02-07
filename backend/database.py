@@ -42,6 +42,7 @@ def init_db():
     from models.gp import GP
     from models.refusal import Refusal
     from models.tu_request import TuRequest
-    
+    from models.placement_permit import PlacementPermit
+
     Base.metadata.create_all(bind=engine)
     print("✅ Таблицы созданы")

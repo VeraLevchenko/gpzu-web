@@ -102,6 +102,80 @@ class LayerPaths:
         "/mnt/graphics/NOVOKUZ/ЗОНЫ КУЛЬТУРНОГО НАСЛЕДИЯ/Границы территорий объектов Культурного наследия.TAB"
     ))
     
+    # ===== СЛОИ ДЛЯ МОДУЛЯ РРР (Разрешение на размещение ресурсов) ===== #
+
+    # Кадастровые кварталы
+    RRR_CADASTRAL_QUARTERS = Path(os.getenv(
+        "LAYER_RRR_CADASTRAL_QUARTERS",
+        "/mnt/graphics/NOVOKUZ/ФГУ участки/KK.TAB"
+    ))
+
+    # Красные линии (полигон)
+    RRR_RED_LINES = Path(os.getenv(
+        "LAYER_RRR_RED_LINES",
+        "/mnt/graphics/NOVOKUZ/Красные_линии_полигон.TAB"
+    ))
+
+    # РРР Заявления (ранее выданные решения)
+    RRR_APPLICATIONS = Path(os.getenv(
+        "LAYER_RRR_APPLICATIONS",
+        "/mnt/rrr/РэРэРэ.TAB"
+    ))
+
+    # Предварительное согласование
+    RRR_PRELIMINARY_APPROVAL = Path(os.getenv(
+        "LAYER_RRR_PRELIMINARY_APPROVAL",
+        "/mnt/graphics/NOVOKUZ/Предварительно согласованные.TAB"
+    ))
+
+    # Предварительное согласование КУМИ
+    RRR_PRELIMINARY_APPROVAL_KUMI = Path(os.getenv(
+        "LAYER_RRR_PRELIMINARY_APPROVAL_KUMI",
+        "/mnt/graphics/NOVOKUZ/КУМИ_предварительно_согласованные_с_кадастровым_номером.TAB"
+    ))
+
+    # Схема расположения
+    RRR_SCHEME_LOCATION = Path(os.getenv(
+        "LAYER_RRR_SCHEME_LOCATION",
+        "/mnt/graphics/NOVOKUZ/Схема расположения.TAB"
+    ))
+
+    # Схема расположения КУМИ
+    RRR_SCHEME_LOCATION_KUMI = Path(os.getenv(
+        "LAYER_RRR_SCHEME_LOCATION_KUMI",
+        "/mnt/graphics/NOVOKUZ/КУМИ_схема_расположения.TAB"
+    ))
+
+    # Схема НТО
+    RRR_SCHEME_NTO = Path(os.getenv(
+        "LAYER_RRR_SCHEME_NTO",
+        "/mnt/graphics/NOVOKUZ/Схема НТО.TAB"
+    ))
+
+    # Реклама
+    RRR_ADVERTISING = Path(os.getenv(
+        "LAYER_RRR_ADVERTISING",
+        "/mnt/graphics/NOVOKUZ/Схема расположения рекламных конструкций.TAB"
+    ))
+
+    # Банк ЗУ многодетные
+    RRR_LAND_BANK = Path(os.getenv(
+        "LAYER_RRR_LAND_BANK",
+        "/mnt/graphics/NOVOKUZ/Банк ЗУ многодетные.TAB"
+    ))
+
+    # Участки
+    RRR_PARCELS = Path(os.getenv(
+        "LAYER_RRR_PARCELS",
+        "/mnt/graphics/NOVOKUZ/Участки.TAB"
+    ))
+
+    # РРР выходной слой (для добавления объектов)
+    RRR_OUTPUT = Path(os.getenv(
+        "LAYER_RRR_OUTPUT",
+        "/mnt/graphics/NOVOKUZ/Разрешение на использование ЗУ.TAB"
+    ))
+
     # ===== ЗАГЛУШКИ ДЛЯ ПОКА НЕИСПОЛЬЗУЕМЫХ СЛОЁВ ===== #
     
     # Эти слои пока не используются, но структура готова
@@ -155,4 +229,32 @@ class LayerPaths:
             "ACTUAL_LAND": cls.ACTUAL_LAND,
         }
         
+        return {name: path.exists() for name, path in layers.items()}
+
+    @classmethod
+    def check_rrr_layers_exist(cls) -> dict[str, bool]:
+        """
+        Проверить существование всех слоёв РРР.
+
+        Returns:
+            Словарь {имя_слоя: существует}
+        """
+        layers = {
+            "RRR_CADASTRAL_QUARTERS": cls.RRR_CADASTRAL_QUARTERS,
+            "CAPITAL_OBJECTS": cls.CAPITAL_OBJECTS,
+            "ZOUIT": cls.ZOUIT,
+            "RRR_RED_LINES": cls.RRR_RED_LINES,
+            "PLANNING_PROJECTS": cls.PLANNING_PROJECTS,
+            "RRR_APPLICATIONS": cls.RRR_APPLICATIONS,
+            "RRR_PRELIMINARY_APPROVAL": cls.RRR_PRELIMINARY_APPROVAL,
+            "RRR_PRELIMINARY_APPROVAL_KUMI": cls.RRR_PRELIMINARY_APPROVAL_KUMI,
+            "RRR_SCHEME_LOCATION": cls.RRR_SCHEME_LOCATION,
+            "RRR_SCHEME_LOCATION_KUMI": cls.RRR_SCHEME_LOCATION_KUMI,
+            "RRR_SCHEME_NTO": cls.RRR_SCHEME_NTO,
+            "RRR_ADVERTISING": cls.RRR_ADVERTISING,
+            "RRR_LAND_BANK": cls.RRR_LAND_BANK,
+            "RRR_PARCELS": cls.RRR_PARCELS,
+            "RRR_OUTPUT": cls.RRR_OUTPUT,
+        }
+
         return {name: path.exists() for name, path in layers.items()}

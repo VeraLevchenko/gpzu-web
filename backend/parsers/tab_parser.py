@@ -37,6 +37,32 @@ def read_tab_file(tab_path: Path | str) -> Optional[gpd.GeoDataFrame]:
         return None
 
 
+def parse_tab_file(tab_path: Path | str) -> List[Dict[str, Any]]:
+    """
+    Читает TAB-файл и возвращает список словарей с полями и геометрией.
+
+    Args:
+        tab_path: Путь к TAB-файлу
+
+    Returns:
+        Список словарей [{поле: значение, ..., "geometry": Shapely geometry}, ...]
+    """
+    gdf = read_tab_file(tab_path)
+    if gdf is None or gdf.empty:
+        return []
+
+    records = []
+    for _, row in gdf.iterrows():
+        record = {}
+        for col in gdf.columns:
+            if col == "geometry":
+                record["geometry"] = row.geometry
+            else:
+                record[col] = row[col]
+        records.append(record)
+    return records
+
+
 def get_field_value(row: pd.Series, field_names: List[str]) -> Optional[str]:
     """
     Получить значение поля из строки, пробуя разные варианты названий.

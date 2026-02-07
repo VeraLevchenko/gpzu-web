@@ -1,0 +1,41 @@
+/* frontend/src/components/RRR/RRRCreate.css */
+
+.rrr-create-container {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.rrr-create-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.rrr-create-content .ant-steps {
+  background: white;
+  padding: 20px 24px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.rrr-create-content .ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.rrr-create-content .ant-upload-drag {
+  border-radius: 8px;
+}
+
+.rrr-create-content h4 {
+  margin-top: 16px;
+  margin-bottom: 12px;
+  color: #262626;
+  font-weight: 600;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 8px;
+}
+
+.rrr-create-content h4:first-child {
+  margin-top: 0;
+}

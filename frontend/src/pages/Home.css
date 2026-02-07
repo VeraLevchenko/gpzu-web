@@ -44,6 +44,10 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
+.rrr-cover {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
 .card-icon {
   font-size: 120px;
   color: white;

@@ -1,0 +1,102 @@
+/* frontend/src/components/RRR/RRRCard.css */
+
+.rrr-card-container {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.rrr-card-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* Заголовок карточки */
+.rrr-card-header {
+  margin-bottom: 16px;
+}
+
+.rrr-card-header h2 {
+  font-size: 1.4rem;
+  color: #262626;
+}
+
+.rrr-card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+/* Карточки секций */
+.rrr-card-content > .ant-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.rrr-card-content .ant-card-head-title {
+  font-weight: 600;
+}
+
+/* Пространственный анализ */
+.rrr-card-content .ant-collapse {
+  background: transparent;
+  border: none;
+}
+
+.rrr-card-content .ant-collapse > .ant-collapse-item {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.rrr-card-content .ant-collapse > .ant-collapse-item:last-child {
+  border-bottom: none;
+}
+
+/* Пустые данные */
+.rrr-empty-text {
+  color: #bfbfbf;
+  font-style: italic;
+}
+
+/* Блоки интеграций */
+.rrr-integration-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rrr-integration-block:last-child {
+  margin-bottom: 0;
+}
+
+.rrr-missing-text {
+  color: #faad14;
+  font-size: 13px;
+}
+
+/* Описания */
+.rrr-card-content .ant-descriptions-item-label {
+  background: #fafafa;
+  font-weight: 500;
+}
+
+/* Таблицы в анализе */
+.rrr-card-content .ant-collapse .ant-table {
+  margin-top: 4px;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .rrr-card-content {
+    padding: 16px;
+  }
+
+  .rrr-card-header h2 {
+    font-size: 1.1rem;
+  }
+
+  .rrr-integration-block {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

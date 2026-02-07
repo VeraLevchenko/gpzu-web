@@ -19,6 +19,7 @@ async def create_card(
     board_id: int = KAITEN_BOARD_ID,
     column_id: int = KAITEN_COLUMN_ID,
     lane_id: int = KAITEN_LANE_ID,
+    type_id: Optional[int] = None,
     properties: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
     if not board_id:
@@ -34,10 +35,14 @@ async def create_card(
         "description": description,
     }
 
+    if type_id:
+        payload["type_id"] = type_id
     if due_date:
         payload["due_date"] = due_date
     if properties:
         payload["properties"] = properties
+
+    logger.info(f"Kaiten payload: {payload}")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -54,3 +59,23 @@ async def create_card(
         except Exception as e:
             logger.exception(f"Ошибка: {e}")
             return None
+
+
+async def add_card_member(card_id: int, user_id: int, member_type: int = 2) -> bool:
+    """Добавить участника к карточке. type=2 — исполнитель."""
+    url = f"{BASE_URL}/cards/{card_id}/members"
+    payload = {"user_id": user_id, "type": member_type}
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status in (200, 201):
+                    logger.info(f"Исполнитель {user_id} добавлен к карточке {card_id}")
+                    return True
+                else:
+                    error_text = await resp.text()
+                    logger.error(f"Ошибка добавления исполнителя: {resp.status} - {error_text}")
+                    return False
+        except Exception as e:
+            logger.exception(f"Ошибка: {e}")
+            return False

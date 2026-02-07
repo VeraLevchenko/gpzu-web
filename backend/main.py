@@ -37,6 +37,8 @@ from api.gp.workspace import router as workspace_router
 
 # Импорт CRUD роутеров для БД ← НОВОЕ
 from api.gp.applications_crud import router as applications_crud_router
+# Импорт роутера РРР
+from api.rrr.routes import router as rrr_router
 from api.gp.refusals_crud import router as refusals_crud_router
 from api.gp.tu_requests_crud import router as tu_requests_crud_router
 
@@ -83,6 +85,11 @@ app.add_middleware(
         "http://10.1.200.12:8000",
         "http://10.1.200.12:3000",
         
+        # VPS сервер
+        "http://83.222.20.176",
+        "http://83.222.20.176:3000",
+        "http://83.222.20.176:8000",
+
         # Если используете HTTPS
         "https://10.1.200.12",
     ],
@@ -140,6 +147,9 @@ app.include_router(applications_crud_router)  # /api/gp/applications
 app.include_router(refusals_crud_router)      # /api/gp/refusals
 app.include_router(tu_requests_crud_router)   # /api/gp/tu-requests
 
+# Модуль РРР (Разрешение на Размещение Ресурсов)
+app.include_router(rrr_router)                # /api/rrr/*
+
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
 # ========================================================================
@@ -166,6 +176,7 @@ async def health_check():
             "refusal": "enabled",
             "workspace": "enabled",
             "database": "enabled",  # ← НОВОЕ
+            "rrr": "enabled",
         }
     }
 
@@ -230,6 +241,12 @@ async def api_info():
                 "prefix": "/api/gp/applications, /api/gp/refusals, /api/gp/tu-requests",
                 "description": "Управление журналами заявлений, отказов и запросов ТУ в PostgreSQL",
                 "endpoints": 15
+            },
+            {
+                "name": "РРР",
+                "prefix": "/api/rrr",
+                "description": "Разрешение на размещение объектов: CRUD, парсинг, анализ, Kaiten, MapInfo, генерация решений",
+                "endpoints": 12
             },
         ]
     }

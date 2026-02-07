@@ -10,8 +10,11 @@ import KaitenFlow from './components/GP/KaitenFlow';
 import MidMifFlow from './components/GP/MidMifFlow';
 import TuFlow from './components/GP/TuFlow';
 import GpFlow from './components/GP/GpFlow';
-import RefusalFlow from './components/GP/RefusalFlow'; 
+import RefusalFlow from './components/GP/RefusalFlow';
 import WorkspaceFlow from './components/GP/WorkspaceFlow';
+import RRRList from './components/RRR/RRRList';
+import RRRCreate from './components/RRR/RRRCreate';
+import RRRCard from './components/RRR/RRRCard';
 import { authApi } from './services/api';
 
 const ProtectedRoute = ({ children }) => {
@@ -44,6 +47,9 @@ function App() {
           <Route path="/gp/gradplan" element={<ProtectedRoute><GpFlow /></ProtectedRoute>} />
           <Route path="/gp/refusal" element={<ProtectedRoute><RefusalFlow /></ProtectedRoute>} />
           <Route path="/gp/workspace" element={<WorkspaceFlow />} />
+          <Route path="/rrr" element={<ProtectedRoute><RRRList /></ProtectedRoute>} />
+          <Route path="/rrr/new" element={<ProtectedRoute><RRRCreate /></ProtectedRoute>} />
+          <Route path="/rrr/:id" element={<ProtectedRoute><RRRCard /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

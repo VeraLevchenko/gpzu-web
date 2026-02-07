@@ -1,7 +1,7 @@
 // frontend/src/pages/Home.jsx
 import React from 'react';
 import { Card, Row, Col } from 'antd';
-import { FileTextOutlined } from '@ant-design/icons';
+import { FileTextOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import UserHeader from '../components/Common/UserHeader';
 import './Home.css';
@@ -29,6 +29,24 @@ const Home = () => {
                 <p>
                   Подготовка и выдача ГПЗУ: создание задач, генерация документов, 
                   пространственный анализ
+                </p>
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card
+              hoverable
+              className="module-card"
+              onClick={() => navigate('/rrr')}
+            >
+              <div className="card-cover rrr-cover">
+                <SafetyCertificateOutlined className="card-icon" />
+              </div>
+              <div className="card-content">
+                <h2>Разрешения на размещение</h2>
+                <p>
+                  Выдача решений о разрешении размещения объектов:
+                  регистрация заявлений, пространственный анализ, формирование документов
                 </p>
               </div>
             </Card>
