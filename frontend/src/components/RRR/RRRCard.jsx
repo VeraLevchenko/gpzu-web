@@ -236,8 +236,10 @@ const RRRCard = () => {
 
   const getMapInfoMissing = () => {
     const missing = [];
-    if (!permit?.org_name && !permit?.person_name) missing.push('Наименование заявителя');
+    if (!permit?.org_name && !permit?.person_name) missing.push('Заявитель');
+    if (!permit?.area) missing.push('Площадь');
     if (!permit?.app_number) missing.push('Вх. номер');
+    if (!permit?.app_date) missing.push('Вх. дата');
     if (!permit?.object_type) missing.push('Вид объекта');
     if (!permit?.object_name) missing.push('Наименование объекта');
     if (!permit?.coordinates || permit.coordinates.length === 0) missing.push('Координаты');

@@ -420,15 +420,39 @@ async def add_to_mapinfo(
     if not permit:
         raise HTTPException(status_code=404, detail="Разрешение не найдено")
 
+    # Серверная валидация обязательных полей
+    missing_fields = []
+    if not permit.org_name and not permit.person_name:
+        missing_fields.append("Заявитель")
+    if not permit.area:
+        missing_fields.append("Площадь")
+    if not permit.object_type:
+        missing_fields.append("Вид объекта")
+    if not permit.object_name:
+        missing_fields.append("Наименование")
+    if not permit.app_number:
+        missing_fields.append("Входящий номер")
+    if not permit.app_date:
+        missing_fields.append("Входящая дата")
+    if not permit.coordinates or len(permit.coordinates) < 3:
+        missing_fields.append("Координаты (минимум 3 точки)")
+
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Не заполнены обязательные поля: {', '.join(missing_fields)}",
+        )
+
     try:
         from generator.rrr_mapinfo import add_permit_to_mapinfo
-        success = add_permit_to_mapinfo(permit)
+        add_permit_to_mapinfo(permit)
+        return {"success": True, "message": "Объект добавлен в слой MapInfo"}
 
-        if success:
-            return {"success": True, "message": "Объект добавлен в слой MapInfo"}
-        else:
-            raise HTTPException(status_code=500, detail="Не удалось добавить в MapInfo")
-
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except RuntimeError as re:
+        logger.error(f"Ошибка merge MapInfo: {re}")
+        raise HTTPException(status_code=500, detail=str(re))
     except HTTPException:
         raise
     except Exception as ex:

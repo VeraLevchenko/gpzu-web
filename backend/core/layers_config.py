@@ -173,7 +173,7 @@ class LayerPaths:
     # РРР выходной слой (для добавления объектов)
     RRR_OUTPUT = Path(os.getenv(
         "LAYER_RRR_OUTPUT",
-        "/mnt/graphics/NOVOKUZ/Разрешение на использование ЗУ.TAB"
+        str(Path(__file__).resolve().parent.parent / "gis_layers" / "РэРэРэ.TAB")
     ))
 
     # ===== ЗАГЛУШКИ ДЛЯ ПОКА НЕИСПОЛЬЗУЕМЫХ СЛОЁВ ===== #
