@@ -106,6 +106,8 @@ async def create_permit(
         org_inn=data.org_inn,
         org_ogrn=data.org_ogrn,
         org_address=data.org_address,
+        applicant_type=data.applicant_type,
+        submission_method=data.submission_method,
         person_name=data.person_name,
         person_passport=data.person_passport,
         person_address=data.person_address,
@@ -122,6 +124,9 @@ async def create_permit(
         area=data.area,
         location=data.location,
         coordinates=data.coordinates,
+        has_payment=data.has_payment,
+        payment_amount=data.payment_amount,
+        proezd_agreement=data.proezd_agreement,
         notes=data.notes,
     )
 
@@ -232,6 +237,7 @@ async def parse_xml(file: UploadFile = File(...)):
             "success": True,
             "data": {
                 "cadastral_block": result.cadastral_block,
+                "note": result.note,
                 "area": result.area,
                 "has_coords": result.has_coords,
                 "coordinates_count": len(result.coordinates),

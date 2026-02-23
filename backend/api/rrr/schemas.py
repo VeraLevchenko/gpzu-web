@@ -39,6 +39,11 @@ class PlacementPermitCreate(BaseModel):
     area: Optional[float] = None
     location: Optional[str] = None
     coordinates: Optional[Any] = None
+    # Оплата
+    has_payment: Optional[bool] = None
+    payment_amount: Optional[float] = None
+    # Согласование примыкания
+    proezd_agreement: Optional[str] = None
     # Дополнительно
     notes: Optional[str] = None
     status: Optional[str] = "зарегистрировано"
@@ -92,6 +97,11 @@ class PlacementPermitUpdate(BaseModel):
     scheme_nto: Optional[Any] = None
     advertising: Optional[Any] = None
     land_bank: Optional[Any] = None
+    # Оплата
+    has_payment: Optional[bool] = None
+    payment_amount: Optional[float] = None
+    # Согласование примыкания
+    proezd_agreement: Optional[str] = None
     # Дополнительно
     notes: Optional[str] = None
     warnings: Optional[str] = None

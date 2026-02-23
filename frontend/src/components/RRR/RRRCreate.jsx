@@ -2,8 +2,9 @@
 import React, { useState } from 'react';
 import {
   Steps, Button, Radio, Upload, Form, Input, InputNumber,
-  DatePicker, message, Card, Descriptions, Space, Result, Spin
+  DatePicker, message, Card, Descriptions, Space, Result, Spin, Select
 } from 'antd';
+
 import { UploadOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { rrrApi } from '../../services/api';
@@ -13,6 +14,7 @@ import './RRRCreate.css';
 
 const { Step } = Steps;
 const { Dragger } = Upload;
+const { Option } = Select;
 
 const RRRCreate = () => {
   const navigate = useNavigate();
@@ -69,7 +71,24 @@ const RRRCreate = () => {
     try {
       const response = await rrrApi.parseApplication(file);
       if (response.data.success) {
-        setAppData(response.data.data);
+        const d = response.data.data;
+        setAppData(d);
+        // Сразу кладём в formData — единственный источник правды
+        setFormData(prev => ({
+          ...prev,
+          org_name:        d.org_name        || prev.org_name,
+          org_inn:         d.inn             || prev.org_inn,
+          org_ogrn:        d.ogrn            || prev.org_ogrn,
+          org_address:     d.org_address     || prev.org_address,
+          person_name:     d.person_name     || prev.person_name,
+          person_passport: d.person_passport || prev.person_passport,
+          person_address:  d.person_address  || prev.person_address,
+          app_number:      d.app_number      || prev.app_number,
+          app_date:        d.app_date        || prev.app_date,
+          term_months:     d.term_months     || prev.term_months,
+          // Авто-определяем тип: org_name → ЮЛ, иначе person_name → ФЛ
+          applicant_type: prev.applicant_type || (d.org_name ? 'ЮЛ' : d.person_name ? 'ФЛ' : undefined),
+        }));
         message.success('Заявление распознано');
       }
     } catch (error) {
@@ -134,7 +153,12 @@ const RRRCreate = () => {
           <Button
             type="primary"
             disabled={!xmlData}
-            onClick={() => setCurrentStep(2)}
+            onClick={() => {
+              if (submissionType === 'epgu' && !formData.submission_method) {
+                setFormData(prev => ({ ...prev, submission_method: 'ЕПГУ' }));
+              }
+              setCurrentStep(2);
+            }}
           >
             Далее
           </Button>
@@ -150,22 +174,24 @@ const RRRCreate = () => {
       const payload = {
         // Из XML
         area: xmlData?.area,
-        location: xmlData?.cadastral_block,
+        location: xmlData?.note || xmlData?.cadastral_block,
         coordinates: xmlData?.coordinates,
-        // Из DOCX (если ЕПГУ)
-        org_name: appData?.org_name || formData.org_name,
-        org_inn: appData?.inn || formData.org_inn,
-        org_ogrn: appData?.ogrn || formData.org_ogrn,
-        org_address: appData?.org_address || formData.org_address,
-        person_name: appData?.person_name || formData.person_name,
-        person_passport: appData?.person_passport || formData.person_passport,
-        person_address: appData?.person_address || formData.person_address,
-        app_number: appData?.app_number || formData.app_number,
-        app_date: appData?.app_date || formData.app_date,
-        term_months: appData?.term_months || formData.term_months,
+        // Данные заявителя
+        org_name:        formData.org_name,
+        org_inn:         formData.org_inn,
+        org_ogrn:        formData.org_ogrn,
+        org_address:     formData.org_address,
+        person_name:     formData.person_name,
+        person_passport: formData.person_passport,
+        person_address:  formData.person_address,
+        app_number:      formData.app_number,
+        app_date:        formData.app_date,
+        term_months:     formData.term_months,
         // Вручную (обязательно)
         object_type: formData.object_type,
         object_name: formData.object_name,
+        applicant_type: formData.applicant_type,
+        submission_method: formData.submission_method || (submissionType === 'epgu' ? 'ЕПГУ' : null),
         // Рассчитанные
         service_deadline_days: selectedObjectType?.deadline_days,
       };
@@ -193,88 +219,151 @@ const RRRCreate = () => {
     }
   };
 
-  const renderStep2 = () => (
-    <Card title="Проверка данных и заполнение полей">
-      <Spin spinning={loading}>
-        <Form layout="vertical" style={{ maxWidth: 700 }}>
-          <h4>Заявитель</h4>
-          <Form.Item label="Наименование организации">
-            <Input
-              value={formData.org_name || appData?.org_name || ''}
-              onChange={(e) => setFormData({ ...formData, org_name: e.target.value })}
-              placeholder="ООО «Название»"
-            />
-          </Form.Item>
-          <Form.Item label="ИНН">
-            <Input
-              value={formData.org_inn || appData?.inn || ''}
-              onChange={(e) => setFormData({ ...formData, org_inn: e.target.value })}
-            />
-          </Form.Item>
-          <Form.Item label="ФИО физлица">
-            <Input
-              value={formData.person_name || appData?.person_name || ''}
-              onChange={(e) => setFormData({ ...formData, person_name: e.target.value })}
-            />
-          </Form.Item>
+  const renderStep2 = () => {
+    const isLegal = formData.applicant_type === 'ЮЛ';
+    const isPhysical = formData.applicant_type === 'ФЛ';
+    const typeNotChosen = !formData.applicant_type;
 
-          <h4>Заявление</h4>
-          <Form.Item label="Входящий номер">
-            <Input
-              value={formData.app_number || appData?.app_number || ''}
-              onChange={(e) => setFormData({ ...formData, app_number: e.target.value })}
-            />
-          </Form.Item>
-          <Form.Item label="Входящая дата">
-            <Input
-              value={formData.app_date || appData?.app_date || ''}
-              onChange={(e) => setFormData({ ...formData, app_date: e.target.value })}
-              placeholder="ГГГГ-ММ-ДД"
-            />
-          </Form.Item>
-          <Form.Item label="Срок действия (месяцы)">
-            <InputNumber
-              value={formData.term_months || appData?.term_months}
-              onChange={(value) => setFormData({ ...formData, term_months: value })}
-              min={1}
-              max={600}
-              style={{ width: 200 }}
-            />
-          </Form.Item>
+    return (
+      <Card title="Проверка данных и заполнение полей">
+        <Spin spinning={loading}>
+          <Form layout="vertical" style={{ maxWidth: 700 }}>
 
-          <h4>Объект (обязательно)</h4>
-          <Form.Item label="Вид объекта" required>
-            <ObjectTypeSelect
-              value={formData.object_type}
-              onChange={(value, typeObj) => {
-                setFormData({ ...formData, object_type: value });
-                setSelectedObjectType(typeObj);
-              }}
-            />
-          </Form.Item>
-          <Form.Item label="Наименование объекта" required>
-            <Input
-              value={formData.object_name || ''}
-              onChange={(e) => setFormData({ ...formData, object_name: e.target.value })}
-              placeholder="Газопровод низкого давления"
-            />
-          </Form.Item>
+            <h4>Объект (обязательно)</h4>
+            <Form.Item label="Вид объекта" required>
+              <ObjectTypeSelect
+                value={formData.object_type}
+                onChange={(value, typeObj) => {
+                  setFormData({ ...formData, object_type: value });
+                  setSelectedObjectType(typeObj);
+                }}
+              />
+            </Form.Item>
+            <Form.Item label="Наименование объекта" required>
+              <Input
+                value={formData.object_name || ''}
+                onChange={(e) => setFormData({ ...formData, object_name: e.target.value })}
+                placeholder="Газопровод низкого давления"
+              />
+            </Form.Item>
 
-          <Space>
-            <Button onClick={() => setCurrentStep(1)}>Назад</Button>
-            <Button
-              type="primary"
-              onClick={handleRegister}
-              disabled={!formData.object_type || !formData.object_name}
-              loading={loading}
-            >
-              Зарегистрировать
-            </Button>
-          </Space>
-        </Form>
-      </Spin>
-    </Card>
-  );
+            <h4>Заявитель</h4>
+            <Form.Item label="Тип заявителя" required>
+              <Radio.Group
+                value={formData.applicant_type}
+                onChange={(e) => setFormData({ ...formData, applicant_type: e.target.value })}
+              >
+                <Radio value="ЮЛ">Юридическое лицо</Radio>
+                <Radio value="ФЛ">Физическое лицо</Radio>
+              </Radio.Group>
+            </Form.Item>
+
+            {(isLegal || typeNotChosen) && (
+              <>
+                <Form.Item label="Наименование организации">
+                  <Input
+                    value={formData.org_name || ''}
+                    onChange={(e) => setFormData({ ...formData, org_name: e.target.value })}
+                    placeholder="ООО «Название»"
+                  />
+                </Form.Item>
+                <Form.Item label="ИНН">
+                  <Input
+                    value={formData.org_inn || ''}
+                    onChange={(e) => setFormData({ ...formData, org_inn: e.target.value })}
+                  />
+                </Form.Item>
+                <Form.Item label="ОГРН">
+                  <Input
+                    value={formData.org_ogrn || ''}
+                    onChange={(e) => setFormData({ ...formData, org_ogrn: e.target.value })}
+                  />
+                </Form.Item>
+                <Form.Item label="Адрес">
+                  <Input
+                    value={formData.org_address || ''}
+                    onChange={(e) => setFormData({ ...formData, org_address: e.target.value })}
+                  />
+                </Form.Item>
+              </>
+            )}
+
+            {(isPhysical || typeNotChosen) && (
+              <>
+                <Form.Item label="ФИО">
+                  <Input
+                    value={formData.person_name || ''}
+                    onChange={(e) => setFormData({ ...formData, person_name: e.target.value })}
+                  />
+                </Form.Item>
+                <Form.Item label="Паспорт">
+                  <Input
+                    value={formData.person_passport || ''}
+                    onChange={(e) => setFormData({ ...formData, person_passport: e.target.value })}
+                  />
+                </Form.Item>
+                <Form.Item label="Адрес регистрации">
+                  <Input
+                    value={formData.person_address || ''}
+                    onChange={(e) => setFormData({ ...formData, person_address: e.target.value })}
+                  />
+                </Form.Item>
+              </>
+            )}
+
+            <h4>Заявление</h4>
+            <Form.Item label="Входящий номер">
+              <Input
+                value={formData.app_number || ''}
+                onChange={(e) => setFormData({ ...formData, app_number: e.target.value })}
+              />
+            </Form.Item>
+            <Form.Item label="Входящая дата">
+              <Input
+                value={formData.app_date || ''}
+                onChange={(e) => setFormData({ ...formData, app_date: e.target.value })}
+                placeholder="ГГГГ-ММ-ДД"
+              />
+            </Form.Item>
+            <Form.Item label="Срок действия (месяцы)">
+              <InputNumber
+                value={formData.term_months}
+                onChange={(value) => setFormData({ ...formData, term_months: value })}
+                min={1}
+                max={600}
+                style={{ width: 200 }}
+              />
+            </Form.Item>
+
+            <Form.Item label="Способ подачи" required>
+              <Select
+                value={formData.submission_method}
+                onChange={(value) => setFormData({ ...formData, submission_method: value })}
+                placeholder="Выберите способ"
+                style={{ width: 220 }}
+              >
+                <Option value="ЕПГУ">ЕПГУ</Option>
+                <Option value="МФЦ">МФЦ</Option>
+                <Option value="Личный прием">Личный прием</Option>
+              </Select>
+            </Form.Item>
+
+            <Space>
+              <Button onClick={() => setCurrentStep(1)}>Назад</Button>
+              <Button
+                type="primary"
+                onClick={handleRegister}
+                disabled={!formData.object_type || !formData.object_name || !formData.applicant_type || !formData.submission_method}
+                loading={loading}
+              >
+                Зарегистрировать
+              </Button>
+            </Space>
+          </Form>
+        </Spin>
+      </Card>
+    );
+  };
 
   // Шаг 3: Успех
   const renderStep3 = () => (

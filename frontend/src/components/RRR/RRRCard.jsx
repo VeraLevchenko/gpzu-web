@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Descriptions, Button, Tag, Space, message, Spin,
   Collapse, Table, Input, InputNumber, Select, Modal, Empty,
-  Popconfirm, Form, Divider, Alert, Tabs,
+  Popconfirm, Form, Divider, Alert, Tabs, Switch, Tooltip,
 } from 'antd';
 import {
   ArrowLeftOutlined, ReloadOutlined, DeleteOutlined,
@@ -28,6 +28,47 @@ const RRRCard = () => {
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [actionLoading, setActionLoading] = useState({});
+  const [objectTypes, setObjectTypes] = useState([]);
+
+  // Загрузка справочника типов объектов
+  useEffect(() => {
+    rrrApi.getObjectTypes().then(res => {
+      if (res.data?.data) setObjectTypes(res.data.data);
+    }).catch(() => {});
+  }, []);
+
+  // Определение конфига типа объекта по строке
+  const getTypeConfig = useCallback((objectTypeStr) => {
+    if (!objectTypeStr || objectTypes.length === 0) return null;
+    const match = objectTypeStr.match(/^п+\.?\s*(\d+(?:\.\d+)?)/);
+    if (match) {
+      return objectTypes.find(t => t.number === match[1]) || null;
+    }
+    return null;
+  }, [objectTypes]);
+
+  // Автоопределение платности
+  const autoDetectPayment = useCallback((objectTypeStr, objectName) => {
+    const cfg = getTypeConfig(objectTypeStr);
+    if (!cfg) return true; // По умолчанию платный
+
+    const number = cfg.number;
+    const name = (objectName || '').toLowerCase();
+
+    // п.4 — платно если «парковка», «стоянка», «автостоянка» (любой падеж)
+    if (number === '4' && cfg.payment_by_name) {
+      return /парковк|стоянк|автостоянк/i.test(name);
+    }
+    // п.6 — платно только для нефтепроводов (любой падеж)
+    if (number === '6' && cfg.payment_by_name_oil) {
+      return /нефтепровод/i.test(name);
+    }
+    // п.19 — платно если «кафе» или «общественное питание» (любой падеж)
+    if (number === '19' && cfg.payment_by_name_cafe) {
+      return /кафе|общественн\w*\s+питани\w*|питани\w*\s+общественн/i.test(name);
+    }
+    return cfg.has_payment_default !== false;
+  }, [getTypeConfig]);
 
   const loadPermit = useCallback(async () => {
     setLoading(true);
@@ -108,6 +149,10 @@ const RRRCard = () => {
       term_months: permit.term_months,
       decision_number: permit.decision_number || '',
       decision_date: permit.decision_date || '',
+      end_date: permit.end_date || '',
+      has_payment: permit.has_payment,
+      payment_amount: permit.payment_amount,
+      proezd_agreement: permit.proezd_agreement || '',
       notes: permit.notes || '',
     });
     setEditing(true);
@@ -555,156 +600,242 @@ const RRRCard = () => {
           {
             key: 'info',
             label: 'Карточка',
-            children: (
-              <>
-                <Card
-                  title="Основная информация"
-                  style={{ marginBottom: 16 }}
-                  extra={
-                    editing ? (
-                      <Space>
-                        <Button icon={<SaveOutlined />} type="primary" onClick={saveEdit} loading={actionLoading.save}>Сохранить</Button>
-                        <Button icon={<CloseOutlined />} onClick={cancelEdit}>Отмена</Button>
-                      </Space>
-                    ) : (
-                      <Button icon={<EditOutlined />} onClick={startEdit}>Редактировать</Button>
-                    )
-                  }
-                >
-                  <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-                    <Descriptions.Item label="Организация" span={2}>
-                      {editing
-                        ? <Input value={editData.org_name} onChange={(e) => setEditData({ ...editData, org_name: e.target.value })} />
-                        : (permit.org_name || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ИНН">
-                      {editing
-                        ? <Input value={editData.org_inn} onChange={(e) => setEditData({ ...editData, org_inn: e.target.value })} />
-                        : (permit.org_inn || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ОГРН">
-                      {editing
-                        ? <Input value={editData.org_ogrn} onChange={(e) => setEditData({ ...editData, org_ogrn: e.target.value })} />
-                        : (permit.org_ogrn || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Адрес организации" span={2}>
-                      {editing
-                        ? <Input value={editData.org_address} onChange={(e) => setEditData({ ...editData, org_address: e.target.value })} />
-                        : (permit.org_address || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="ФИО" span={2}>
-                      {editing
-                        ? <Input value={editData.person_name} onChange={(e) => setEditData({ ...editData, person_name: e.target.value })} />
-                        : (permit.person_name || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Паспорт">
-                      {editing
-                        ? <Input value={editData.person_passport} onChange={(e) => setEditData({ ...editData, person_passport: e.target.value })} />
-                        : (permit.person_passport || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Адрес физлица">
-                      {editing
-                        ? <Input value={editData.person_address} onChange={(e) => setEditData({ ...editData, person_address: e.target.value })} />
-                        : (permit.person_address || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Тип заявителя">
-                      {editing
-                        ? (
-                          <Select
-                            value={editData.applicant_type || undefined}
-                            onChange={(value) => setEditData({ ...editData, applicant_type: value })}
-                            placeholder="Выберите тип"
-                            style={{ width: '100%' }}
-                            allowClear
-                          >
-                            <Option value="ЮЛ">Юридическое лицо</Option>
-                            <Option value="ФЛ">Физическое лицо</Option>
-                          </Select>
-                        )
-                        : (permit.applicant_type === 'ЮЛ' ? 'Юридическое лицо' : permit.applicant_type === 'ФЛ' ? 'Физическое лицо' : '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Способ подачи">
-                      {editing
-                        ? (
-                          <Select
-                            value={editData.submission_method || undefined}
-                            onChange={(value) => setEditData({ ...editData, submission_method: value })}
-                            placeholder="Выберите способ"
-                            style={{ width: '100%' }}
-                            allowClear
-                          >
-                            <Option value="ЕПГУ">ЕПГУ</Option>
-                            <Option value="МФЦ">МФЦ</Option>
-                            <Option value="Личный прием">Личный прием</Option>
-                          </Select>
-                        )
-                        : (permit.submission_method || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Вх. номер">
-                      {editing
-                        ? <Input value={editData.app_number} onChange={(e) => setEditData({ ...editData, app_number: e.target.value })} />
-                        : (permit.app_number || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Вх. дата">
-                      {editing
-                        ? <Input value={editData.app_date} onChange={(e) => setEditData({ ...editData, app_date: e.target.value })} />
-                        : formatDate(permit.app_date)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Вид объекта" span={2}>
-                      {editing
-                        ? <ObjectTypeSelect value={editData.object_type} onChange={(value) => setEditData({ ...editData, object_type: value })} />
-                        : (permit.object_type || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Наименование объекта" span={2}>
-                      {editing
-                        ? <Input value={editData.object_name} onChange={(e) => setEditData({ ...editData, object_name: e.target.value })} />
-                        : (permit.object_name || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Срок действия">
-                      {editing
-                        ? <InputNumber value={editData.term_months} onChange={(value) => setEditData({ ...editData, term_months: value })} min={1} max={600} style={{ width: '100%' }} />
-                        : (permit.term_months ? `${permit.term_months} мес.` : '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Срок оказания услуги">
-                      {permit.service_deadline_days ? `${permit.service_deadline_days} раб. дн.` : '-'}
-                    </Descriptions.Item>
-                  </Descriptions>
+            children: (() => {
+              const showLegal = editing
+                ? editData.applicant_type !== 'ФЛ'
+                : permit.applicant_type !== 'ФЛ';
+              const showPhysical = editing
+                ? editData.applicant_type !== 'ЮЛ'
+                : permit.applicant_type !== 'ЮЛ';
 
-                  <Divider style={{ margin: '12px 0' }} />
-                  <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-                    <Descriptions.Item label="Номер решения">
-                      {editing
-                        ? <Input value={editData.decision_number} onChange={(e) => setEditData({ ...editData, decision_number: e.target.value })} />
-                        : (permit.decision_number || '-')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="Дата решения">
-                      {editing
-                        ? <Input value={editData.decision_date} onChange={(e) => setEditData({ ...editData, decision_date: e.target.value })} />
-                        : formatDate(permit.decision_date)}
-                    </Descriptions.Item>
-                  </Descriptions>
+              return (
+                <>
+                  {/* ── БЛОК 1: ЗАЯВИТЕЛЬ ── */}
+                  <Card
+                    className="rrr-section-card"
+                    title="Заявитель"
+                    style={{ marginBottom: 16 }}
+                    extra={
+                      editing ? (
+                        <Space>
+                          <Button icon={<SaveOutlined />} type="primary" onClick={saveEdit} loading={actionLoading.save}>Сохранить</Button>
+                          <Button icon={<CloseOutlined />} onClick={cancelEdit}>Отмена</Button>
+                        </Space>
+                      ) : (
+                        <Button icon={<EditOutlined />} onClick={startEdit}>Редактировать</Button>
+                      )
+                    }
+                  >
+                    {/* Вх. номер и дата */}
+                    <Descriptions column={2} bordered size="small" style={{ marginBottom: 0 }}>
+                      <Descriptions.Item label="Вх. номер">
+                        {editing
+                          ? <Input value={editData.app_number} onChange={(e) => setEditData({ ...editData, app_number: e.target.value })} />
+                          : (permit.app_number || '-')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Вх. дата">
+                        {editing
+                          ? <Input value={editData.app_date} onChange={(e) => setEditData({ ...editData, app_date: e.target.value })} />
+                          : formatDate(permit.app_date)}
+                      </Descriptions.Item>
+                    </Descriptions>
 
-                  <Divider style={{ margin: '12px 0' }} />
-                  <Descriptions column={1} size="small">
-                    <Descriptions.Item label="Примечание">
-                      {editing
-                        ? <Input.TextArea value={editData.notes} onChange={(e) => setEditData({ ...editData, notes: e.target.value })} rows={3} />
-                        : (permit.notes || '-')}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
+                    {/* Тип заявителя — выбор в режиме редактирования */}
+                    {editing && (
+                      <div className="rrr-type-selector">
+                        <span className="rrr-type-label">Тип заявителя:</span>
+                        <Select
+                          value={editData.applicant_type || undefined}
+                          onChange={(value) => setEditData({ ...editData, applicant_type: value })}
+                          placeholder="Выберите тип"
+                          style={{ width: 220 }}
+                          allowClear
+                        >
+                          <Option value="ЮЛ">Юридическое лицо</Option>
+                          <Option value="ФЛ">Физическое лицо</Option>
+                        </Select>
+                      </div>
+                    )}
 
-                <Card title="Геоданные" style={{ marginBottom: 16 }}>
-                  <Descriptions column={{ xs: 1, sm: 3 }} bordered size="small">
-                    <Descriptions.Item label="Площадь">{formatArea(permit.area)}</Descriptions.Item>
-                    <Descriptions.Item label="Местоположение">{permit.location || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Координаты">
-                      {permit.coordinates ? `${permit.coordinates.length} точек` : '-'}
-                    </Descriptions.Item>
-                  </Descriptions>
-                </Card>
-              </>
-            ),
+                    {/* Данные юрлица */}
+                    {showLegal && (
+                      <>
+                        <Divider orientation="left" className="rrr-block-divider">
+                          Юридическое лицо
+                        </Divider>
+                        <Descriptions column={2} bordered size="small">
+                          <Descriptions.Item label="Организация" span={2}>
+                            {editing
+                              ? <Input value={editData.org_name} onChange={(e) => setEditData({ ...editData, org_name: e.target.value })} />
+                              : (permit.org_name || '-')}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="ИНН">
+                            {editing
+                              ? <Input value={editData.org_inn} onChange={(e) => setEditData({ ...editData, org_inn: e.target.value })} />
+                              : (permit.org_inn || '-')}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="ОГРН">
+                            {editing
+                              ? <Input value={editData.org_ogrn} onChange={(e) => setEditData({ ...editData, org_ogrn: e.target.value })} />
+                              : (permit.org_ogrn || '-')}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Адрес" span={2}>
+                            {editing
+                              ? <Input value={editData.org_address} onChange={(e) => setEditData({ ...editData, org_address: e.target.value })} />
+                              : (permit.org_address || '-')}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </>
+                    )}
+
+                    {/* Данные физлица */}
+                    {showPhysical && (
+                      <>
+                        <Divider orientation="left" className="rrr-block-divider">
+                          Физическое лицо
+                        </Divider>
+                        <Descriptions column={2} bordered size="small">
+                          <Descriptions.Item label="ФИО" span={2}>
+                            {editing
+                              ? <Input value={editData.person_name} onChange={(e) => setEditData({ ...editData, person_name: e.target.value })} />
+                              : (permit.person_name || '-')}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Паспорт" span={2}>
+                            {editing
+                              ? <Input value={editData.person_passport} onChange={(e) => setEditData({ ...editData, person_passport: e.target.value })} />
+                              : (permit.person_passport || '-')}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Адрес" span={2}>
+                            {editing
+                              ? <Input value={editData.person_address} onChange={(e) => setEditData({ ...editData, person_address: e.target.value })} />
+                              : (permit.person_address || '-')}
+                          </Descriptions.Item>
+                        </Descriptions>
+                      </>
+                    )}
+
+                  </Card>
+
+                  {/* ── БЛОК 2: ОБЪЕКТ ── */}
+                  <Card className="rrr-section-card" title="Объект" style={{ marginBottom: 16 }}>
+                    <Descriptions column={2} bordered size="small">
+                      <Descriptions.Item label="Вид объекта" span={2}>
+                        {editing
+                          ? <ObjectTypeSelect value={editData.object_type} onChange={(value) => setEditData({ ...editData, object_type: value })} />
+                          : (permit.object_type || '-')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Наименование" span={2}>
+                        {editing
+                          ? <Input value={editData.object_name} onChange={(e) => setEditData({ ...editData, object_name: e.target.value })} />
+                          : (permit.object_name || '-')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Местоположение" span={2}>
+                        {permit.location || '-'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Площадь">
+                        {formatArea(permit.area)}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Card>
+
+                  {/* ── БЛОК 3: СРОКИ И ПОДАЧА ── */}
+                  <Card className="rrr-section-card" title="Сроки и подача" style={{ marginBottom: 16 }}>
+                    <Descriptions column={2} bordered size="small">
+                      <Descriptions.Item label="Срок оказания услуги">
+                        {permit.service_deadline_days ? `${permit.service_deadline_days} раб. дн.` : '-'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Срок действия">
+                        {editing
+                          ? <InputNumber value={editData.term_months} onChange={(value) => setEditData({ ...editData, term_months: value })} min={1} max={600} style={{ width: '100%' }} />
+                          : (permit.term_months ? `${permit.term_months} мес.` : '-')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Способ подачи" span={2}>
+                        {editing
+                          ? (
+                            <Select
+                              value={editData.submission_method || undefined}
+                              onChange={(value) => setEditData({ ...editData, submission_method: value })}
+                              placeholder="Выберите способ"
+                              style={{ width: '100%' }}
+                              allowClear
+                            >
+                              <Option value="ЕПГУ">ЕПГУ</Option>
+                              <Option value="МФЦ">МФЦ</Option>
+                              <Option value="Личный прием">Личный прием</Option>
+                            </Select>
+                          )
+                          : (permit.submission_method || '-')}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Card>
+
+                  {/* ── БЛОК 4: РЕШЕНИЕ ── */}
+                  <Card className="rrr-section-card" title="Решение" style={{ marginBottom: 16 }}>
+                    <Descriptions column={{ xs: 2, md: 4 }} bordered size="small">
+                      <Descriptions.Item label="Номер решения">
+                        {editing
+                          ? <Input value={editData.decision_number} onChange={(e) => setEditData({ ...editData, decision_number: e.target.value })} />
+                          : (permit.decision_number || '-')}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Дата решения">
+                        {editing
+                          ? <Input value={editData.decision_date} onChange={(e) => setEditData({ ...editData, decision_date: e.target.value })} />
+                          : formatDate(permit.decision_date)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Период до">
+                        {editing
+                          ? <Input value={editData.end_date} onChange={(e) => setEditData({ ...editData, end_date: e.target.value })} placeholder="ГГГГ-ММ-ДД" />
+                          : formatDate(permit.end_date)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Сумма">
+                        {permit.has_payment === false
+                          ? <Tag color="green">Бесплатно</Tag>
+                          : permit.payment_amount
+                            ? <><Tag color="red">Платно</Tag> {permit.payment_amount.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} руб.</>
+                            : <Tag>Не рассчитано</Tag>}
+                      </Descriptions.Item>
+                    </Descriptions>
+
+                    {/* Оплата — редактирование */}
+                    {editing && (
+                      <div className="rrr-payment-edit">
+                        <span className="rrr-type-label">Оплата:</span>
+                        <Switch
+                          checked={editData.has_payment !== null && editData.has_payment !== undefined
+                            ? editData.has_payment
+                            : autoDetectPayment(editData.object_type, editData.object_name)}
+                          onChange={(checked) => setEditData({ ...editData, has_payment: checked })}
+                          checkedChildren="Платно"
+                          unCheckedChildren="Бесплатно"
+                        />
+                        <Tooltip title="Определить автоматически по виду объекта и наименованию">
+                          <Button size="small" onClick={() => {
+                            const auto = autoDetectPayment(editData.object_type, editData.object_name);
+                            setEditData({ ...editData, has_payment: auto });
+                          }}>Авто</Button>
+                        </Tooltip>
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* ── ДОПОЛНИТЕЛЬНО ── */}
+                  <Card className="rrr-section-card" title="Дополнительно" style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 6 }}>
+                      Согласование примыкания (п.12)
+                    </div>
+                    {editing
+                      ? <Input.TextArea
+                          value={editData.proezd_agreement}
+                          onChange={(e) => setEditData({ ...editData, proezd_agreement: e.target.value })}
+                          rows={5}
+                          placeholder="Текст согласования на примыкание к автодороге"
+                        />
+                      : <div style={{ whiteSpace: 'pre-wrap' }}>{permit.proezd_agreement || '—'}</div>
+                    }
+                  </Card>
+                </>
+              );
+            })(),
           },
           {
             key: 'spatial',

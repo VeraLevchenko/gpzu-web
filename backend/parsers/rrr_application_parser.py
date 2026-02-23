@@ -86,10 +86,20 @@ def _extract_from_tables(doc: Document) -> dict:
                 if len(cells) >= 3 and cells[2]:
                     result["org_name"] = cells[2].strip()
 
-            # ФИО физлица (1.1.1)
+            # ФИО физлица (1.1.1) — нумерованный формат
             if cells[0].startswith("1.1.1"):
                 if len(cells) >= 3 and cells[2]:
                     result["person_name"] = cells[2].strip()
+
+            # ФИО физлица — формат ЕПГУ «ФИО: …;»
+            if "person_name" not in result and "фио" in row_text:
+                for c in cells:
+                    m = re.search(r'ФИО\s*:\s*([^;]+)', c)
+                    if m:
+                        name = m.group(1).strip().rstrip(';').strip()
+                        if name and len(name) > 3:
+                            result["person_name"] = name
+                            break
 
             # Полное наименование из свободного текста ячейки
             # Формат: "Полное наименование: ООО "НАЗВАНИЕ"; ИНН: ..."
@@ -120,26 +130,43 @@ def _extract_from_tables(doc: Document) -> dict:
                     if m and "ogrn" not in result:
                         result["ogrn"] = m.group(0)
 
-            # Адрес организации
-            if "адрес" in row_text and "юридическ" in row_text:
-                for c in reversed(cells):
-                    if c and len(c) > 10 and "адрес" not in c.lower():
-                        result["org_address"] = c.strip()
+            # Адрес организации — «Почтовый адрес: …» в той же ячейке
+            if "org_address" not in result and "почтовый адрес" in row_text:
+                for c in cells:
+                    m = re.search(r'[Пп]очтовый\s+адрес\s*:\s*([^;]+)', c)
+                    if m:
+                        addr = m.group(1).strip().rstrip(';').strip()
+                        if addr and len(addr) > 5:
+                            result["org_address"] = addr
+                            break
+
+            # Паспорт — объединяем: Наименование документа + Серия, номер + Дата выдачи + Кем выдан
+            if "person_passport" not in result and (
+                "наименование документа" in row_text or "серия" in row_text
+                or "паспорт" in row_text or "документ, удостоверяющий" in row_text
+            ):
+                for c in cells:
+                    m_doc  = re.search(r'[Нн]аименование\s+документа\s*:\s*([^;]+)', c)
+                    m_ser  = re.search(r'[Сс]ерия[,\s]+номер\s*:\s*([^;]+)', c)
+                    m_date = re.search(r'[Дд]ата\s+выдачи\s*:\s*([^;]+)', c)
+                    m_by   = re.search(r'[Кк]ем\s+выдан\s*:\s*([^;]+)', c)
+                    parts = [
+                        g.group(1).strip().rstrip(';').strip()
+                        for g in (m_doc, m_ser, m_date, m_by) if g
+                    ]
+                    if parts:
+                        result["person_passport"] = ', '.join(p for p in parts if p)
                         break
 
-            # Паспорт
-            if "паспорт" in row_text or "документ, удостоверяющий" in row_text:
-                for c in reversed(cells):
-                    if c and len(c) > 5 and "паспорт" not in c.lower() and "документ" not in c.lower():
-                        result["person_passport"] = c.strip()
-                        break
-
-            # Адрес физлица
-            if "адрес" in row_text and ("регистрац" in row_text or "проживан" in row_text):
-                for c in reversed(cells):
-                    if c and len(c) > 10 and "адрес" not in c.lower():
-                        result["person_address"] = c.strip()
-                        break
+            # Адрес физлица — «Адрес регистрации: …»
+            if "person_address" not in result and "адрес регистрации" in row_text:
+                for c in cells:
+                    m = re.search(r'[Аа]дрес\s+регистрации\s*:\s*([^;]+)', c)
+                    if m:
+                        addr = m.group(1).strip().rstrip(';').strip()
+                        if addr and len(addr) > 5:
+                            result["person_address"] = addr
+                            break
 
             # Срок размещения
             if "срок" in row_text and ("размещ" in row_text or "месяц" in row_text):

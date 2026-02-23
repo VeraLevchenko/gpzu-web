@@ -3,7 +3,7 @@
 SQLAlchemy модель для разрешений на размещение объектов (РРР).
 """
 
-from sqlalchemy import Column, Integer, String, Text, Date, Float, DateTime
+from sqlalchemy import Column, Integer, String, Text, Date, Float, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from database import Base
@@ -77,6 +77,13 @@ class PlacementPermit(Base):
     advertising = Column(JSONB, nullable=True)
     land_bank = Column(JSONB, nullable=True)
 
+    # Оплата
+    has_payment = Column(Boolean, nullable=True)
+    payment_amount = Column(Float, nullable=True)
+
+    # Согласование примыкания (п.9 — проезды)
+    proezd_agreement = Column(Text, nullable=True)
+
     # Дополнительно
     notes = Column(Text, nullable=True)
     warnings = Column(Text, nullable=True)
@@ -133,6 +140,11 @@ class PlacementPermit(Base):
             "scheme_nto": self.scheme_nto,
             "advertising": self.advertising,
             "land_bank": self.land_bank,
+            # Оплата
+            "has_payment": self.has_payment,
+            "payment_amount": self.payment_amount,
+            # Согласование примыкания
+            "proezd_agreement": self.proezd_agreement,
             # Дополнительно
             "notes": self.notes,
             "warnings": self.warnings,

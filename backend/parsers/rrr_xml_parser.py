@@ -27,6 +27,7 @@ class RRRCoord:
 class RRRXMLData:
     """Результат парсинга XML схемы границ РРР."""
     cadastral_block: Optional[str] = None
+    note: Optional[str] = None
     area: Optional[float] = None
     coordinates: List[RRRCoord] = field(default_factory=list)
     has_coords: bool = False
@@ -115,6 +116,11 @@ def parse_rrr_xml(raw: bytes) -> RRRXMLData:
     cb = parcel.xpath("*[local-name()='CadastralBlock']")
     if cb:
         result.cadastral_block = _text_or_none(cb[0])
+
+    # Note — местоположение объекта
+    note_el = parcel.xpath("*[local-name()='Note']")
+    if note_el:
+        result.note = _text_or_none(note_el[0])
 
     # Area
     area_el = parcel.xpath("*[local-name()='Area']/*[local-name()='Area']")

@@ -5,7 +5,8 @@ import axios from 'axios';
 const getApiUrl = () => {
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:8000';
+    // Используем относительные URL — CRA proxy пробрасывает на :8000
+    return '';
   }
   return `http://${hostname}:8000`;
 };
