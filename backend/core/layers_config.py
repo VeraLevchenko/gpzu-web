@@ -176,6 +176,12 @@ class LayerPaths:
         str(Path(__file__).resolve().parent.parent / "gis_layers" / "РэРэРэ.TAB")
     ))
 
+    # Листы масштаба 1:500 (планшеты)
+    SHEETS_500 = Path(os.getenv(
+        "LAYER_SHEETS_500",
+        "/mnt/graphics/NOVOKUZ/Лист_500.TAB"
+    ))
+
     # ===== ЗАГЛУШКИ ДЛЯ ПОКА НЕИСПОЛЬЗУЕМЫХ СЛОЁВ ===== #
     
     # Эти слои пока не используются, но структура готова

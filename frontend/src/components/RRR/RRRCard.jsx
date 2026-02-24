@@ -315,6 +315,15 @@ const RRRCard = () => {
 
     const sections = [
       {
+        key: 'sheets_500',
+        label: 'Планшеты 1:500',
+        render: () => {
+          const sheets = permit.sheets_500;
+          if (!sheets || sheets.length === 0) return <span className="rrr-empty-text">нет данных</span>;
+          return <span>{sheets.join(', ')}</span>;
+        },
+      },
+      {
         key: 'quarters',
         label: 'Кадастровые кварталы',
         render: () => <span>{permit.quarters || <span className="rrr-empty-text">нет данных</span>}</span>,

@@ -297,6 +297,7 @@ async def spatial_analysis(
                 permit.scheme_nto = result.get("scheme_nto")
                 permit.advertising = result.get("advertising")
                 permit.land_bank = result.get("land_bank")
+                permit.sheets_500 = result.get("sheets_500")
                 permit.warnings = result.get("warnings")
                 db.commit()
                 db.refresh(permit)

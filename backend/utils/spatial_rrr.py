@@ -22,6 +22,8 @@ from parsers.tab_parser import (
     find_restrictions_for_parcel,
     parse_planning_projects_layer,
     check_planning_project_intersection,
+    parse_sheets_layer,
+    find_intersecting_sheets,
 )
 
 logger = logging.getLogger("gpzu-web.spatial_rrr")
@@ -55,6 +57,7 @@ def perform_rrr_spatial_analysis(coordinates: List[Dict[str, Any]]) -> Dict[str,
         "scheme_nto": [],
         "advertising": [],
         "land_bank": [],
+        "sheets_500": [],
         "warnings": [],
     }
 
@@ -127,6 +130,9 @@ def perform_rrr_spatial_analysis(coordinates: List[Dict[str, Any]]) -> Dict[str,
     logger.info("Этап 15/15: РРР выходной слой")
     # Выходной слой — только для записи, не для анализа
     pass
+
+    logger.info("Этап 16/16: Планшеты 1:500")
+    _analyze_sheets_500(result, coords)
 
     # Формируем предупреждения
     result["warnings"] = "; ".join(result["warnings"]) if result["warnings"] else None
@@ -476,3 +482,29 @@ def _analyze_land_bank(result: dict, coords: list, polygon):
         result["warnings"],
     )
     result["land_bank"] = items
+
+
+def _analyze_sheets_500(result: dict, coords: list):
+    """Определить планшеты масштаба 1:500, пересекающиеся с объектом."""
+    layer = LayerPaths.SHEETS_500
+    if not layer.exists():
+        logger.warning(f"Слой планшетов 1:500 не найден: {layer}")
+        return
+
+    try:
+        sheets = parse_sheets_layer(layer)
+        if not sheets:
+            logger.info("Слой планшетов 1:500 пуст")
+            return
+
+        found = find_intersecting_sheets(coords, sheets)
+        result["sheets_500"] = found
+
+        if found:
+            logger.info(f"Планшеты 1:500: {', '.join(found)}")
+        else:
+            logger.info("Пересечений с планшетами 1:500 не найдено")
+
+    except Exception as ex:
+        result["warnings"].append(f"Ошибка анализа планшетов 1:500: {ex}")
+        logger.warning(f"Ошибка анализа планшетов 1:500: {ex}")

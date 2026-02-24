@@ -69,7 +69,7 @@ def perform_spatial_analysis(gp_data: GPData) -> GPData:
     
     logger.info("Этап 6/6: Проверка прочих ограничений")
     _analyze_other_restrictions(gp_data, coords)
-    
+
     gp_data.analysis_completed = True
     logger.info("Пространственный анализ завершён успешно")
     

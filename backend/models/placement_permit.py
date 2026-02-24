@@ -76,6 +76,7 @@ class PlacementPermit(Base):
     scheme_nto = Column(JSONB, nullable=True)
     advertising = Column(JSONB, nullable=True)
     land_bank = Column(JSONB, nullable=True)
+    sheets_500 = Column(JSONB, nullable=True)  # Планшеты 1:500
 
     # Оплата
     has_payment = Column(Boolean, nullable=True)
@@ -140,6 +141,7 @@ class PlacementPermit(Base):
             "scheme_nto": self.scheme_nto,
             "advertising": self.advertising,
             "land_bank": self.land_bank,
+            "sheets_500": self.sheets_500,
             # Оплата
             "has_payment": self.has_payment,
             "payment_amount": self.payment_amount,

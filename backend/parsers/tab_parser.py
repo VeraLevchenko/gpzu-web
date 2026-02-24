@@ -532,3 +532,71 @@ def find_restrictions_for_parcel(coords: List[Tuple[float, float]], restrictions
     except Exception as ex:
         logger.error(f"Ошибка при поиске ограничений: {ex}")
         return []
+
+
+def parse_sheets_layer(tab_path: Path | str) -> List[Dict[str, Any]]:
+    """
+    Парсинг слоя планшетов масштаба 1:500 (Лист_500).
+
+    Args:
+        tab_path: Путь к TAB-файлу
+
+    Returns:
+        Список планшетов с полем 'name' (Номер_листа) и 'geometry'
+    """
+    gdf = read_tab_file(tab_path)
+    if gdf is None or gdf.empty:
+        return []
+
+    NAME_FIELDS = ["Номер_листа", "NOMER_LISTA", "Номер", "NAME", "Наименование"]
+
+    sheets = []
+    for _, row in gdf.iterrows():
+        name = get_field_value(row, NAME_FIELDS)
+        sheets.append({
+            "name": name,
+            "geometry": row.get("geometry"),
+        })
+
+    logger.info(f"Загружено планшетов из {Path(tab_path).name}: {len(sheets)}")
+    return sheets
+
+
+def find_intersecting_sheets(
+    coords: List[Tuple[float, float]],
+    sheets: List[Dict[str, Any]],
+) -> List[str]:
+    """
+    Найти планшеты (Лист_500), пересекающиеся с полигоном участка.
+
+    Args:
+        coords: Координаты участка [(x, y), ...]
+        sheets: Список планшетов из parse_sheets_layer()
+
+    Returns:
+        Список наименований (Номер_листа) пересекающихся планшетов
+    """
+    if not coords or len(coords) < 3:
+        logger.warning("Недостаточно координат для поиска планшетов")
+        return []
+
+    try:
+        parcel_polygon = Polygon(coords)
+
+        found = []
+        for sheet in sheets:
+            geom = sheet.get("geometry")
+            if geom is None:
+                continue
+            if parcel_polygon.intersects(geom):
+                name = sheet.get("name")
+                if name:
+                    found.append(name)
+
+        found.sort()
+        logger.info(f"Найдено пересекающихся планшетов: {len(found)} — {found}")
+        return found
+
+    except Exception as ex:
+        logger.error(f"Ошибка при поиске планшетов: {ex}")
+        return []
