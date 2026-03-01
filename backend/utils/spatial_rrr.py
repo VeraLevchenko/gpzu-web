@@ -58,6 +58,7 @@ def perform_rrr_spatial_analysis(coordinates: List[Dict[str, Any]]) -> Dict[str,
         "advertising": [],
         "land_bank": [],
         "sheets_500": [],
+        "prev_decisions": [],
         "warnings": [],
     }
 
@@ -101,6 +102,7 @@ def perform_rrr_spatial_analysis(coordinates: List[Dict[str, Any]]) -> Dict[str,
 
     logger.info("Этап 6/15: РРР заявления")
     _analyze_rrr_applications(result, coords, polygon)
+    _analyze_prev_decisions(result, coords, polygon)
 
     logger.info("Этап 7/15: Предварительное согласование")
     _analyze_preliminary_approval(result, coords, polygon)
@@ -194,8 +196,13 @@ def _generic_layer_analysis(
                 continue
 
             try:
-                if not polygon.intersects(geom):
+                if not polygon.intersects(geom) or polygon.touches(geom):
                     continue
+
+                # Для полигональных объектов — порог 1 кв.м.
+                if geom.geom_type in ('Polygon', 'MultiPolygon'):
+                    if polygon.intersection(geom).area < 1.0:
+                        continue
 
                 item = {}
                 for result_key, field_name in field_map.items():
@@ -227,10 +234,13 @@ def _analyze_cadastral_quarters(result: dict, coords: list, polygon):
         quarters = []
         for record in records:
             geom = record.get("geometry")
-            if geom and polygon.intersects(geom):
-                cad_num = record.get("CAD_NUM", "")
-                if cad_num and cad_num not in quarters:
-                    quarters.append(cad_num)
+            if not geom or not polygon.intersects(geom) or polygon.touches(geom):
+                continue
+            if geom.geom_type in ('Polygon', 'MultiPolygon') and polygon.intersection(geom).area < 1.0:
+                continue
+            cad_num = record.get("CAD_NUM", "")
+            if cad_num and cad_num not in quarters:
+                quarters.append(cad_num)
         result["quarters"] = ", ".join(quarters) if quarters else None
     except Exception as ex:
         result["warnings"].append(f"Ошибка анализа кадастровых кварталов: {ex}")
@@ -307,25 +317,30 @@ def _analyze_red_lines(result: dict, polygon):
         descriptions = []
         for record in records:
             geom = record.get("geometry")
-            if geom and polygon.intersects(geom):
+            desc = record.get("Описание", "") or ""
+            # Учитываем только зону "За красными линиями. Строительство запрещено!"
+            if geom and polygon.intersects(geom) and not polygon.touches(geom) and "Строительство запрещено" in desc:
                 red_line_geoms.append(geom)
-                desc = record.get("Описание", "")
                 if desc and desc not in descriptions:
                     descriptions.append(desc)
 
         if red_line_geoms:
             red_lines_union = unary_union(red_line_geoms)
             intersection = polygon.intersection(red_lines_union)
-            difference = polygon.difference(red_lines_union)
+            intersection_area = round(intersection.area, 2) if not intersection.is_empty else 0.0
 
-            result["red_lines_inside_area"] = round(intersection.area, 2) if not intersection.is_empty else 0.0
-            result["red_lines_outside_area"] = round(difference.area, 2) if not difference.is_empty else 0.0
-            result["red_lines_description"] = "; ".join(descriptions) if descriptions else None
-
-            logger.info(
-                f"Красные линии: внутри={result['red_lines_inside_area']} кв.м, "
-                f"снаружи={result['red_lines_outside_area']} кв.м"
-            )
+            # Игнорируем погрешность < 1 кв.м.
+            if intersection_area >= 1.0:
+                difference = polygon.difference(red_lines_union)
+                result["red_lines_inside_area"] = intersection_area
+                result["red_lines_outside_area"] = round(difference.area, 2) if not difference.is_empty else 0.0
+                result["red_lines_description"] = "; ".join(descriptions) if descriptions else None
+                logger.info(
+                    f"Красные линии: внутри={result['red_lines_inside_area']} кв.м, "
+                    f"снаружи={result['red_lines_outside_area']} кв.м"
+                )
+            else:
+                logger.info(f"Красные линии: пересечение {intersection_area} кв.м — игнорируется как погрешность")
 
     except Exception as ex:
         result["warnings"].append(f"Ошибка анализа красных линий: {ex}")
@@ -369,6 +384,24 @@ def _analyze_rrr_applications(result: dict, coords: list, polygon):
         result["warnings"],
     )
     result["rrr"] = items
+
+
+def _analyze_prev_decisions(result: dict, coords: list, polygon):
+    """Анализ ранее выданных решений из слоя 'Разрешение на использование ЗУ'."""
+    items = _generic_layer_analysis(
+        LayerPaths.RRR_PREV_DECISIONS,
+        "Ранее выданные решения РРР",
+        polygon,
+        {
+            "object_type":     "Вид_объекта",
+            "decision_number": "Номер_решения",
+            "decision_date":   "Дата_Решения",
+            "end_date":        "Дата_окончания",
+            "applicant":       "Заявитель",
+        },
+        result["warnings"],
+    )
+    result["prev_decisions"] = items
 
 
 def _analyze_preliminary_approval(result: dict, coords: list, polygon):

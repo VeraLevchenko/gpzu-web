@@ -68,6 +68,7 @@ class PlacementPermit(Base):
     capital_objects = Column(JSONB, nullable=True)
     zouit = Column(JSONB, nullable=True)
     rrr = Column(JSONB, nullable=True)
+    prev_decisions = Column(JSONB, default=list)
     ppipm = Column(JSONB, nullable=True)
     preliminary_approval = Column(JSONB, nullable=True)
     preliminary_approval_kumi = Column(JSONB, nullable=True)
@@ -133,6 +134,7 @@ class PlacementPermit(Base):
             "capital_objects": self.capital_objects,
             "zouit": self.zouit,
             "rrr": self.rrr,
+            "prev_decisions": self.prev_decisions or [],
             "ppipm": self.ppipm,
             "preliminary_approval": self.preliminary_approval,
             "preliminary_approval_kumi": self.preliminary_approval_kumi,
