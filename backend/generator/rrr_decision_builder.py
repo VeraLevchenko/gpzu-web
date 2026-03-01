@@ -407,6 +407,20 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         _term += 1
     n_term_nto = _term if is_nto else 0
 
+    # Ранее выданные решения РРР
+    _prev_raw = data.get("prev_decisions") or []
+    prev_decisions = [
+        {
+            "object_type":     item.get("object_type") or "",
+            "decision_number": item.get("decision_number") or "",
+            "decision_date":   _format_date_ru(item.get("decision_date")),
+            "end_date":        _format_date_ru(item.get("end_date")),
+            "applicant":       item.get("applicant") or "",
+        }
+        for item in _prev_raw
+    ]
+    has_prev_decisions = bool(prev_decisions)
+
     # Нумерация пунктов решения (динамическая)
     _n = 3
     if has_payment:
@@ -417,6 +431,9 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     n_geodesy = _n; _n += 1                   # Геодезическая съёмка
     n_rso = _n; _n += 1                       # Согласования РСО
     n_third_parties = _n; _n += 1             # Права третьих лиц
+    n_prev_decisions = _n if has_prev_decisions else 0  # Ранее выданные РРР (условно)
+    if has_prev_decisions:
+        _n += 1
     n_vegetation = _n; _n += 1                # Вырубка насаждений
     n_cleanup = _n; _n += 1                   # Очистка от деревьев
     n_liner = _n if is_linear else 0
@@ -571,6 +588,8 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "N_GEODESY": n_geodesy,
         "N_RSO": n_rso,
         "N_THIRD_PARTIES": n_third_parties,
+        "N_PREV_DECISIONS": n_prev_decisions,
+        "PREV_DECISIONS":   prev_decisions,
         "N_VEGETATION": n_vegetation,
         "N_CLEANUP": n_cleanup,
         "N_LINER": n_liner,

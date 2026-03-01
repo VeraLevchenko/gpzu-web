@@ -176,6 +176,12 @@ class LayerPaths:
         str(Path(__file__).resolve().parent.parent / "gis_layers" / "РэРэРэ.TAB")
     ))
 
+    # Ранее выданные решения РРР (Разрешение на использование ЗУ)
+    RRR_PREV_DECISIONS = Path(os.getenv(
+        "LAYER_RRR_PREV_DECISIONS",
+        str(Path(__file__).resolve().parent.parent / "gis_layers" / "Разрешение на использование ЗУ.TAB")
+    ))
+
     # Листы масштаба 1:500 (планшеты)
     SHEETS_500 = Path(os.getenv(
         "LAYER_SHEETS_500",

@@ -371,8 +371,19 @@ const RRRCard = () => {
         ]),
       },
       {
+        key: 'prev_decisions',
+        label: 'Ранее выданные решения РРР (Разрешение на использование ЗУ)',
+        render: () => renderJsonTable(permit.prev_decisions, [
+          { title: 'Вид объекта',   dataIndex: 'object_type',     key: 'object_type' },
+          { title: 'Номер решения', dataIndex: 'decision_number', key: 'decision_number' },
+          { title: 'Дата решения',  dataIndex: 'decision_date',   key: 'decision_date' },
+          { title: 'Срок до',       dataIndex: 'end_date',        key: 'end_date' },
+          { title: 'Заявитель',     dataIndex: 'applicant',       key: 'applicant' },
+        ]),
+      },
+      {
         key: 'rrr',
-        label: 'РРР (ранее выданные решения)',
+        label: 'Заявления РРР (входящие)',
         render: () => renderJsonTable(permit.rrr, [
           { title: 'Вх. номер', dataIndex: 'incoming_number', key: 'incoming_number' },
           { title: 'Вх. дата', dataIndex: 'incoming_date', key: 'incoming_date' },
