@@ -504,7 +504,7 @@ async def generate_decision(
     except FileNotFoundError as ex:
         raise HTTPException(status_code=500, detail=str(ex))
     except Exception as ex:
-        logger.error(f"Ошибка генерации решения: {ex}")
+        import traceback; traceback.print_exc(); logger.error(f"Ошибка генерации решения: {ex}")
         raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(ex)}")
 
 

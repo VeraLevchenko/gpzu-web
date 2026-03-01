@@ -179,7 +179,7 @@ class LayerPaths:
     # Листы масштаба 1:500 (планшеты)
     SHEETS_500 = Path(os.getenv(
         "LAYER_SHEETS_500",
-        "/mnt/graphics/NOVOKUZ/Лист_500.TAB"
+        "/mnt/graphics/Номенклатура/Лист_500.TAB"
     ))
 
     # ===== ЗАГЛУШКИ ДЛЯ ПОКА НЕИСПОЛЬЗУЕМЫХ СЛОЁВ ===== #
