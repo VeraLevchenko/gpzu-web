@@ -12,6 +12,7 @@ import logging
 import math
 import re
 from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -49,8 +50,8 @@ def _find_object_type_config(object_type_str: str, types_list: list) -> Optional
     if not object_type_str:
         return None
 
-    # Извлекаем номер пункта из строки (п.6, п.4.1, пп.1 и т.д.)
-    m = re.match(r"^п+\.?\s*(\d+(?:\.\d+)?)", object_type_str.strip())
+    # Извлекаем номер пункта из строки: «п.6 — ...», «пп.4 ...», «5. ...», «6 ...»
+    m = re.match(r"^(?:п+\.?\s*)?(\d+(?:\.\d+)?)", object_type_str.strip())
     if m:
         number = m.group(1)
         for t in types_list:
@@ -361,7 +362,7 @@ def _parse_date_value(val) -> Optional[date]:
 # Основная функция генерации
 # ========================================================================
 
-def generate_rrr_decision(permit: Any, output_path: str) -> str:
+def generate_rrr_decision(permit: Any, output_path: str, current_user_fio: str = "") -> str:
     """
     Сгенерировать решение о разрешении размещения объектов.
 
@@ -423,6 +424,7 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
 
     # Нумерация пунктов решения (динамическая)
     _n = 3
+    n_payment = 3 if has_payment else 0
     if has_payment:
         _n += 1                                # п.3 = оплата
     n_termination = _n; _n += 1               # Прекращение действия
@@ -447,9 +449,16 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     # Согласование примыкания (п.9)
     proezd_agreement = data.get("proezd_agreement") or ""
 
+    # Срок действия
+    term_months = data.get("term_months")
+
     # Парсим даты
     decision_date = _parse_date_value(data.get("decision_date"))
-    end_date = _parse_date_value(data.get("end_date"))
+    # end_date всегда рассчитывается как decision_date + term_months
+    if decision_date and term_months:
+        end_date = decision_date + relativedelta(months=term_months) - relativedelta(days=1)
+    else:
+        end_date = _parse_date_value(data.get("end_date"))
 
     # Расчёт платы
     payment_yearly = 0.0
@@ -463,9 +472,6 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
             payment_formula=payment_formula,
             payment_config=payment_config,
         )
-
-    # Срок действия
-    term_months = data.get("term_months")
     term_text = _term_months_text(term_months) if term_months else "___"
     max_term_months = max_term_years * 12
 
@@ -516,6 +522,10 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
             "base_rate": lep_cfg["base_rate"],
             "ki": lep_cfg["ki"],
         }
+        SU = 0
+        NST_PCT = ""
+        BASE_RATE = lep_cfg["base_rate"]
+        KI = lep_cfg["ki"]
     else:
         std_cfg = payment_config["standard"]
         formula_params = {
@@ -523,6 +533,10 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
             "nst": std_cfg["nst"],
             "nst_pct": f"{std_cfg['nst'] * 100:g}",
         }
+        SU = std_cfg["su"]
+        NST_PCT = f"{std_cfg['nst'] * 100:g}"
+        BASE_RATE = 0
+        KI = 0
 
     # Формируем контекст для шаблона
     context = {
@@ -553,8 +567,8 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "TERM_MONTHS": term_months or "___",
         "TERM_TEXT": term_text,
         "MAX_TERM_MONTHS": max_term_months,
-        "END_DATE": _format_date_ru(data.get("end_date")),
-        "END_DATE_LONG": _format_date_long(data.get("end_date")),
+        "END_DATE": _format_date_ru(end_date),
+        "END_DATE_LONG": _format_date_long(end_date),
         # Флаги
         "is_linear": is_linear,
         "is_liner": is_linear,   # алиас для шаблона ({% if is_liner %})
@@ -564,12 +578,17 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "proezd_agreement": proezd_agreement,
         "payment_formula": payment_formula,
         # Оплата
+        "N_PAYMENT": n_payment,
         "PAYMENT_YEARLY": _format_money(payment_yearly),
         "PAYMENT_YEARLY_WORDS": _money_to_words(payment_yearly),
         "PAYMENT_TOTAL": _format_money(payment_total),
         "PAYMENT_TOTAL_WORDS": _money_to_words(payment_total),
         "PERIOD_DAYS": period_days,
         "formula_params": formula_params,
+        "SU": SU,
+        "NST_PCT": NST_PCT,
+        "BASE_RATE": BASE_RATE,
+        "KI": KI,
         # Реквизиты
         "REQ_RECIPIENT": requisites.get("recipient", ""),
         "REQ_INN": requisites.get("inn", ""),
@@ -601,6 +620,7 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "N_MAINTENANCE": n_maintenance,
         "N_PAVEMENT": n_pavement,
         "N_CONTROL": n_control,
+        "CURRENT_USER": current_user_fio,
         # Пространственный анализ
         "QUARTERS": data.get("quarters") or "не определены",
         "CAPITAL_OBJECTS_LIST": data.get("capital_objects") or [],

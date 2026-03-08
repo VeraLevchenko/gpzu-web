@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models.placement_permit import PlacementPermit
+from api.auth import verify_credentials
 from api.rrr.schemas import (
     PlacementPermitCreate,
     PlacementPermitUpdate,
@@ -475,6 +476,7 @@ async def add_to_mapinfo(
 async def generate_decision(
     data: DecisionGenerateRequest,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(verify_credentials),
 ):
     """Сгенерировать решение о разрешении размещения (DOCX)."""
     permit = db.query(PlacementPermit).filter(PlacementPermit.id == data.permit_id).first()
@@ -493,7 +495,7 @@ async def generate_decision(
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / filename
 
-        generate_rrr_decision(permit, str(output_path))
+        generate_rrr_decision(permit, str(output_path), current_user_fio=current_user.get("fio", ""))
 
         return FileResponse(
             path=str(output_path),
