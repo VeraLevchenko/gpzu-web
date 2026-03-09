@@ -291,6 +291,13 @@ const RRRCard = () => {
     return missing;
   };
 
+  const getDecisionMissing = () => {
+    const missing = [];
+    if (!permit?.decision_number) missing.push('Номер решения');
+    if (!permit?.decision_date) missing.push('Дата решения');
+    return missing;
+  };
+
   // ============================
   // Рендер пространственного анализа
   // ============================
@@ -526,6 +533,7 @@ const RRRCard = () => {
   const remainingDays = getRemainingDays();
   const kaitenMissing = getKaitenMissing();
   const mapInfoMissing = getMapInfoMissing();
+  const decisionMissing = getDecisionMissing();
 
   return (
     <div className="rrr-card-container">
@@ -568,9 +576,15 @@ const RRRCard = () => {
               icon={<FileWordOutlined />}
               loading={actionLoading.decision}
               onClick={handleGenerateDecision}
+              disabled={decisionMissing.length > 0}
             >
               Сформировать решение
             </Button>
+            {decisionMissing.length > 0 && (
+              <span className="rrr-missing-text">
+                Не хватает: {decisionMissing.join(', ')}
+              </span>
+            )}
             <Button disabled>
               Сформировать отказ (в разработке)
             </Button>
