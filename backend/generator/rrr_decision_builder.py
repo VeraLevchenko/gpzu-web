@@ -390,6 +390,7 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     # Флаги из конфига типа
     is_linear = type_config.get("is_linear", False) if type_config else False
     is_nto = type_config.get("is_nto", False) if type_config else False
+    is_attrac = type_config.get("is_attrac", False) if type_config else False
     max_term_years = type_config.get("max_term_years", 3) if type_config else 3
     payment_formula = type_config.get("payment_formula", "standard") if type_config else "standard"
     object_number = type_config.get("number", "") if type_config else ""
@@ -406,7 +407,9 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     n_term_payment = _term if has_payment else 0
     if has_payment:
         _term += 1
-    n_term_nto = _term if is_nto else 0
+    n_term_nto = _term if is_attrac else 0
+    if is_attrac:
+        _term += 1
 
     # Ранее выданные решения РРР
     _prev_raw = data.get("prev_decisions") or []
@@ -427,6 +430,9 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     n_payment = 3 if has_payment else 0
     if has_payment:
         _n += 1                                # п.3 = оплата
+    n_attrac = _n if is_attrac else 0
+    if is_attrac:
+        _n += 1                                # п. об аттракционе
     n_termination = _n; _n += 1               # Прекращение действия
     n_liquidation = _n; _n += 1               # В случае ликвидации
     n_earthworks = _n; _n += 1                # Земляные работы
@@ -573,14 +579,15 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "END_DATE_LONG": _format_date_long(end_date),
         # Флаги
         "is_linear": is_linear,
-        "is_liner": is_linear,   # алиас для шаблона ({% if is_liner %})
         "is_nto": is_nto,
+        "is_attrac": is_attrac,
         "has_payment": has_payment,
         "has_red_lines": has_red_lines,
         "proezd_agreement": proezd_agreement,
         "payment_formula": payment_formula,
         # Оплата
         "N_PAYMENT": n_payment,
+        "N_ATTRAC": n_attrac,
         "PAYMENT_YEARLY": _format_money(payment_yearly),
         "PAYMENT_YEARLY_WORDS": _money_to_words(payment_yearly),
         "PAYMENT_TOTAL": _format_money(payment_total),
