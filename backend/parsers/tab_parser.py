@@ -600,3 +600,94 @@ def find_intersecting_sheets(
     except Exception as ex:
         logger.error(f"Ошибка при поиске планшетов: {ex}")
         return []
+
+
+# ==================== СЛОЙ АГО ==================== #
+
+def parse_ago_layer(tab_path: Path | str) -> List[Dict[str, Any]]:
+    """
+    Парсит слой территорий АГО (архитектурно-градостроительный облик).
+
+    Ключевые поля TAB-файла:
+        Индекс_территории_АГО — "АГО-1" или "АГО-2"
+        Наименование_территории_АГО — полное наименование
+
+    Returns:
+        Список словарей {index, name, geometry}
+    """
+    gdf = read_tab_file(tab_path)
+    if gdf is None or gdf.empty:
+        return []
+
+    records = []
+    for _, row in gdf.iterrows():
+        index_val = get_field_value(row, [
+            "Индекс_территории_АГО", "Индекс_АГО", "index", "Index",
+        ])
+        name_val = get_field_value(row, [
+            "Наименование_территории_АГО", "Наименование_АГО", "name", "Name",
+        ])
+        geom = row.geometry if hasattr(row, "geometry") else None
+
+        records.append({
+            "index": (index_val or "").strip(),
+            "name": (name_val or "").strip(),
+            "geometry": geom,
+        })
+
+    logger.info(f"Загружено объектов АГО: {len(records)}")
+    return records
+
+
+def find_ago_for_parcel(
+    coords: List[Tuple[float, float]],
+    ago_features: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Определяет, попадает ли участок в зону АГО.
+
+    Правило: только реальное площадное пересечение (≥ 1 кв.м).
+    Общие точки/линии не считаются — совпадает с логикой ЗОУИТ.
+
+    Returns:
+        Словарь {index, name} для первой найденной зоны АГО, или None.
+    """
+    if len(coords) < 3:
+        logger.warning("Недостаточно координат для проверки АГО")
+        return None
+
+    try:
+        parcel_polygon = Polygon(coords)
+        if not parcel_polygon.is_valid:
+            parcel_polygon = parcel_polygon.buffer(0)
+
+        for feature in ago_features:
+            geom = feature.get("geometry")
+            if geom is None:
+                continue
+            if not parcel_polygon.intersects(geom):
+                continue
+
+            intersection = parcel_polygon.intersection(geom)
+            area = intersection.area if hasattr(intersection, "area") else 0.0
+
+            if area < 1.0:
+                logger.debug(
+                    f"АГО {feature.get('index')} — пересечение слишком мало: {area:.3f} кв.м, игнорируем"
+                )
+                continue
+
+            logger.info(
+                f"Участок входит в АГО: {feature.get('index')}, площадь пересечения: {area:.2f} кв.м"
+            )
+            return {
+                "index": feature.get("index"),
+                "name": feature.get("name"),
+                "geometry": feature.get("geometry"),
+            }
+
+        return None
+
+    except Exception as ex:
+        logger.error(f"Ошибка при проверке АГО: {ex}")
+        return None

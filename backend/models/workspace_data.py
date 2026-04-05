@@ -84,6 +84,13 @@ class ZouitInfo:
 
 
 @dataclass
+class AgoInfo:
+    """Информация о территории АГО (архитектурно-градостроительный облик)."""
+    index: Optional[str] = None     # "АГО-1", "АГО-2"
+    geometry: Optional[Any] = None  # Polygon/MultiPolygon зоны АГО
+
+
+@dataclass
 class WorkspaceData:
     """
     Полные данные для создания рабочего набора MapInfo.
@@ -100,6 +107,7 @@ class WorkspaceData:
     # Опциональные слои (создаются при наличии объектов)
     capital_objects: List[CapitalObjectInfo] = field(default_factory=list)  # Список ОКС
     zouit: List[ZouitInfo] = field(default_factory=list)                    # Список ЗОУИТ
+    ago: Optional[AgoInfo] = None                                           # Зона АГО (если есть)
     
     # Путь к серверному слою красных линий
     red_lines_layer_path: str = "/mnt/graphics/NOVOKUZ/Красные_линии.TAB"
@@ -117,6 +125,11 @@ class WorkspaceData:
     def has_zouit(self) -> bool:
         """Есть ли ЗОУИТ в границах участка"""
         return len(self.zouit) > 0
+
+    @property
+    def has_ago(self) -> bool:
+        """Есть ли зона АГО для участка"""
+        return self.ago is not None and self.ago.geometry is not None
     
     @property
     def zouit_types(self) -> List[str]:

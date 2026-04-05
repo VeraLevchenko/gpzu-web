@@ -37,6 +37,8 @@ from parsers.tab_parser import (
     check_planning_project_intersection,
     parse_zouit_layer_extended,
     find_restrictions_for_parcel,
+    parse_ago_layer,
+    find_ago_for_parcel,
 )
 
 logger = logging.getLogger("gpzu-bot.spatial_analysis")
@@ -456,7 +458,36 @@ def _analyze_zouit(gp_data: GPData, coords: List[Tuple[float, float]]):
 
 def _analyze_other_restrictions(gp_data: GPData, coords: List[Tuple[float, float]]):
     """Проверить АГО, КРТ, ОКН"""
-    pass
+    _analyze_ago(gp_data, coords)
+
+
+def _analyze_ago(gp_data: GPData, coords: List[Tuple[float, float]]):
+    """Определить, попадает ли участок в территорию АГО."""
+    if not LayerPaths.AGO.exists():
+        logger.warning(f"Слой АГО не найден: {LayerPaths.AGO}")
+        gp_data.ago_index = None
+        return
+
+    try:
+        ago_features = parse_ago_layer(LayerPaths.AGO)
+        if not ago_features:
+            logger.info("Слой АГО пуст")
+            gp_data.ago_index = None
+            return
+
+        result = find_ago_for_parcel(coords, ago_features)
+        if result:
+            gp_data.ago_index = result.get("index")
+            gp_data.ago_geometry = result.get("geometry")
+            logger.info(f"Участок входит в АГО: {gp_data.ago_index}")
+        else:
+            gp_data.ago_index = None
+            logger.info("Участок не входит в границы АГО")
+
+    except Exception as ex:
+        msg = f"Ошибка при анализе АГО: {ex}"
+        logger.exception(msg)
+        gp_data.ago_index = None
 
 
 def test_layers_availability() -> Dict[str, bool]:
