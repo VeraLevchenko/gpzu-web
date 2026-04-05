@@ -42,14 +42,16 @@ def _templates_dir() -> Path:
 
 def _read_text_auto(path: Path) -> str:
     """
-    WOR-шаблоны часто в cp1251. Читаем устойчиво:
-    сначала cp1251, потом utf-8.
+    Читаем WOR-шаблон с автоопределением кодировки.
+    Сначала UTF-8 (строгая проверка), потом CP1251.
+    CP1251 никогда не бросает исключений (все байты валидны),
+    поэтому его проверяем последним.
     """
     data = path.read_bytes()
     try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
         return data.decode("cp1251")
-    except Exception:
-        return data.decode("utf-8", errors="replace")
 
 
 def _render_template(text: str, ctx: dict[str, str]) -> str:
