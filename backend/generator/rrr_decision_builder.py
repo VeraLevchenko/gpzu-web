@@ -438,6 +438,7 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     n_earthworks = _n; _n += 1                # Земляные работы
     n_geodesy = _n; _n += 1                   # Геодезическая съёмка
     n_rso = _n; _n += 1                       # Согласования РСО
+    n_uds = _n; _n += 1                       # УДС — примыкания, пересечения
     n_third_parties = _n; _n += 1             # Права третьих лиц
     n_prev_decisions = _n if has_prev_decisions else 0  # Ранее выданные РРР (условно)
     if has_prev_decisions:
@@ -450,6 +451,12 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
     n_end_term = _n; _n += 1                  # По окончании срока
     n_maintenance = _n; _n += 1               # Содержание территории
     n_pavement = _n; _n += 1                  # Восстановление покрытия
+    # Свободный доступ — п.12 или объект с парковкой/стоянкой
+    _object_name_str = data.get("object_name", "") or ""
+    is_free_access = (object_number == "12") or bool(_PARKING_RE.search(_object_name_str))
+    n_free_access = _n if is_free_access else 0
+    if is_free_access:
+        _n += 1
     n_control = _n                             # Контроль
 
     # Согласование примыкания (п.9)
@@ -616,6 +623,7 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "N_EARTHWORKS": n_earthworks,
         "N_GEODESY": n_geodesy,
         "N_RSO": n_rso,
+        "N_UDS": n_uds,
         "N_THIRD_PARTIES": n_third_parties,
         "N_PREV_DECISIONS": n_prev_decisions,
         "PREV_DECISIONS":   prev_decisions,
@@ -629,6 +637,8 @@ def generate_rrr_decision(permit: Any, output_path: str) -> str:
         "N_END_TERM": n_end_term,
         "N_MAINTENANCE": n_maintenance,
         "N_PAVEMENT": n_pavement,
+        "is_free_access": is_free_access,
+        "N_FREE_ACCESS": n_free_access,
         "N_CONTROL": n_control,
         "CURRENT_USER": "",
         # Пространственный анализ
