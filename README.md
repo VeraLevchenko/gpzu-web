@@ -103,3 +103,15 @@ services/api.js:
 
 5) Таблицы журналов
 Например, ApplicationsTable запрашивает /api/gp/applications, показывает фильтры по статусу и кадастровому номеру, и отрисовывает таблицу заявлений.
+
+Как запустить!
+Добавить путь к аго в .env
+
+sudo systemctl restart gpzu-web.service
+sudo systemctl status gpzu-web.service
+
+Как откатиться!
+cd ~/gpzu-web
+git checkout main
+sudo systemctl restart gpzu-web.service
+sudo systemctl status gpzu-web.service

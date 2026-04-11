@@ -196,6 +196,11 @@ async def spatial_analysis(request: Request):
                 "exists": False,
                 "decision_full": "Документация по планировке территории не утверждена"
             },
+
+            "ago": {
+                "index": gp_data.ago_index,
+                "exists": gp_data.ago_index is not None
+            },
             
             "warnings": gp_data.warnings,
             "errors": gp_data.errors

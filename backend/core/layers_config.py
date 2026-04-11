@@ -196,7 +196,10 @@ class LayerPaths:
     ZOUIT_WATER = ZOUIT
     ZOUIT_OTHER = ZOUIT
     
-    AGO = BASE / "ago.tab"  # Если появится слой АГО
+    AGO = Path(os.getenv(
+        "LAYER_AGO",
+        str(Path(__file__).resolve().parent.parent / "gis_layers" / "Территории_АГО.TAB")
+    ))
     KRT = BASE / "krt.tab"  # Если появится слой КРТ
     
     
