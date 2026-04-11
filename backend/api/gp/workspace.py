@@ -27,6 +27,7 @@ from generator.mif_writer import (
     create_oks_mif,
     create_zouit_mif,
     create_zouit_labels_mif,
+    create_ago_mif,
     create_workspace_directory,
     get_project_base_dir,
     create_oks_labels_mif
@@ -125,7 +126,7 @@ async def create_workspace(
         has_zouit_labels = False
         if workspace.zouit:
             zouit_files = create_zouit_mif(workspace.zouit, project_base)
-            
+
             # Создаем слой подписей ЗОУИТ
             if zouit_files and workspace.parcel.geometry:
                 result_labels = create_zouit_labels_mif(
@@ -134,7 +135,13 @@ async def create_workspace(
                     output_dir=project_base
                 )
                 has_zouit_labels = result_labels is not None
-        
+
+        # Создаём слой АГО (если участок в зоне АГО)
+        if workspace.has_ago:
+            ago_mif = create_ago_mif(workspace.ago, project_base)
+            if ago_mif:
+                logger.info(f"Workspace: слой АГО создан ({workspace.ago.index})")
+
         # ========== ШАГ 5: Конвертация MIF → TAB ========== #
         logger.info("Workspace: конвертация MIF → TAB")
         
@@ -152,9 +159,10 @@ async def create_workspace(
             zouit_files=zouit_files,
             has_zouit_labels=has_zouit_labels,
             address=workspace.parcel.address,
-            area=workspace.parcel.area,  # ✅ ДОБАВЛЕНО: площадь из ЕГРН
+            area=workspace.parcel.area,
             specialist_name=(user.get("fio") or user.get("username") or ""),
             zouit_list=workspace.zouit,
+            ago=workspace.ago,
         )
         
         logger.info(f"Workspace: WOR создан {wor_path.name}")

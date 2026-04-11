@@ -197,13 +197,15 @@ async def spatial_analysis(request: Request):
                 "decision_full": "Документация по планировке территории не утверждена"
             },
             
+            "ago_index": gp_data.ago_index,
+
             "warnings": gp_data.warnings,
             "errors": gp_data.errors
         }
-        
+
         logger.info(
             f"Анализ выполнен: зона={result.get('zone')}, район={result.get('district')}, "
-            f"ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])}"
+            f"ОКС={len(result['capital_objects'])}, ЗОУИТ={len(result['zouit'])}, АГО={result.get('ago_index')}"
         )
         
         return JSONResponse(content={

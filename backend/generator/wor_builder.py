@@ -20,7 +20,7 @@ WOR (Workspace) - это текстовый файл MapInfo который со
 
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 from datetime import datetime
 import logging
 import os
@@ -42,14 +42,16 @@ def _templates_dir() -> Path:
 
 def _read_text_auto(path: Path) -> str:
     """
-    WOR-шаблоны часто в cp1251. Читаем устойчиво:
-    сначала cp1251, потом utf-8.
+    Читаем WOR-шаблон с автоопределением кодировки.
+    Сначала UTF-8 (строгая проверка), потом CP1251.
+    CP1251 никогда не бросает исключений (все байты валидны),
+    поэтому его проверяем последним.
     """
     data = path.read_bytes()
     try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
         return data.decode("cp1251")
-    except Exception:
-        return data.decode("utf-8", errors="replace")
 
 
 def _render_template(text: str, ctx: dict[str, str]) -> str:
@@ -131,7 +133,8 @@ def _build_zouit_legend_block(
     items: Optional[List[Tuple[str, str]]],
     *,
     template_filename: str,
-) -> str:
+    y_start: float = 3.75,
+) -> Tuple[str, float]:
     """
     Легенда ЗОУИТ:
     - слева прямоугольник-образец (Create Rect) в той же колонке, что и существующие образцы;
@@ -142,7 +145,7 @@ def _build_zouit_legend_block(
     - ни текст, ни прямоугольник не выходят за рамку легенды
     """
     if not items:
-        return ""
+        return "", y_start
 
     # --- точные координаты рамки легенды и колонок образцов из шаблонов ---
     if "map1_a2" in template_filename:
@@ -153,7 +156,6 @@ def _build_zouit_legend_block(
         symbol_right = 20.2875
 
         x_text = 20.3618
-        y0 = 3.75
     else:  # map1_a3
         legend_left  = 12.3333
         legend_right = 16.3007
@@ -162,7 +164,6 @@ def _build_zouit_legend_block(
         symbol_right = 13.3049
 
         x_text = 13.4007
-        y0 = 3.75
 
     # --- параметры размещения ---
     pad_right = 0.01      # чтобы гарантированно не задеть правую рамку легенды
@@ -185,7 +186,7 @@ def _build_zouit_legend_block(
     max_chars = max(18, int(text_width * 16))
 
     out: List[str] = []
-    y = y0
+    y = y_start
 
     for name, reg in items:
         name = (name or "").strip()
@@ -245,9 +246,76 @@ def _build_zouit_legend_block(
         # следующий элемент ниже (разреженность между элементами)
         y += block_h + gap
 
+    return "\n\n".join(out) + "\n", y
+
+
+def _build_ago_legend_block(
+    ago: Optional[Any],
+    *,
+    y_start: float,
+    template_filename: str,
+) -> str:
+    """
+    Один элемент легенды для зоны АГО:
+    - розовый прямоугольник-образец слева
+    - подпись "зона АГО-1" / "зона АГО-2" справа
+    Вставляется самым нижним элементом после ЗОУИТ.
+    """
+    if ago is None or not getattr(ago, 'index', None):
+        return ""
+
+    from generator.zouit_styles import COLOR_PINK, COLOR_PINK_FILL, PATTERN_HATCH
+
+    if "map1_a2" in template_filename:
+        symbol_left  = 19.4104
+        symbol_right = 20.2875
+        x_text       = 20.3618
+        legend_right = 23.2618
+    else:  # map1_a3
+        symbol_left  = 12.4625
+        symbol_right = 13.3049
+        x_text       = 13.4007
+        legend_right = 16.3007
+
+    rect_h = 0.14
+    rect_w = symbol_right - symbol_left
+    pad_right = 0.01
+    text_width = (legend_right - pad_right) - x_text
+
+    label = f"зона {ago.index}"  # "зона АГО-1" или "зона АГО-2"
+    pen_line   = f"Pen (1,2,{COLOR_PINK})"
+    brush_line = f"Brush ({PATTERN_HATCH[2]},{COLOR_PINK_FILL})"
+
+    y = y_start
+    out = []
+
+    out.append(
+        """  Create Rect ({x1},{y1}) ({x2},{y2})
+    {pen}
+    {brush}""".format(
+            x1=round(symbol_left, 4),
+            y1=round(y, 4),
+            x2=round(symbol_left + rect_w, 4),
+            y2=round(y + rect_h, 4),
+            pen=pen_line,
+            brush=brush_line,
+        )
+    )
+
+    out.append(
+        """  Create Text
+    "{label}"
+    ({x1},{y1}) ({x2},{y2})
+    Font ("Times New Roman CYR",2,8,0)""".format(
+            label=label,
+            x1=round(x_text, 4),
+            y1=round(y, 4),
+            x2=round(x_text + text_width, 4),
+            y2=round(y + rect_h, 4),
+        )
+    )
+
     return "\n\n".join(out) + "\n"
-
-
 
 
 
@@ -271,7 +339,8 @@ def create_workspace_wor(
     use_absolute_paths: bool = False,
     address: Optional[str] = None,           # Адрес участка из выписки ЕГРН
     specialist_name: Optional[str] = None,    # ФИО специалиста из учётки
-    area: Optional[float] = None
+    area: Optional[float] = None,
+    ago: Optional[Any] = None,               # AgoInfo — зона АГО (если есть)
 ) -> Path:
     """
     Создать WOR-файл рабочего набора с правильными стилями и отчётами (Layout).
@@ -390,8 +459,12 @@ def create_workspace_wor(
     if has_zouit_labels:
         map1_layers.append("зоуит_подписи")
 
-    # 5. Красные линии  # ← ДОБАВЬ ЭТО
-    map1_layers.append("Красные_линии")  # ← ДОБАВЬ ЭТО
+    # 5. АГО (если есть) — ниже всех проектных слоёв
+    if ago and getattr(ago, 'geometry', None):
+        map1_layers.append("аго")
+
+    # 6. Красные линии — самый нижний
+    map1_layers.append("Красные_линии")
 
     
     map1_from_str = ",".join(map1_layers)
@@ -443,6 +516,10 @@ def create_workspace_wor(
     # Открываем слой подписей ЗОУИТ (если есть)
     if has_zouit_labels:
         wor_content += f'Open Table "{layers_subdir}\\\\зоуит_подписи.TAB" As зоуит_подписи Interactive\n'
+
+    # Открываем слой АГО (если есть)
+    if ago and getattr(ago, 'geometry', None):
+        wor_content += f'Open Table "{layers_subdir}\\\\аго.TAB" As аго Interactive\n'
 
     # Открываем красные линии
     wor_content += f'Open Table "{red_lines_path}" As Красные_линии Interactive\n'
@@ -558,6 +635,16 @@ map1WindowID = FrontWindow()
 '''
         layer_index += 1
 
+    # ✅ СЛОЙ: АГО (розовый контур + розовая штриховка)
+    if ago and getattr(ago, 'geometry', None):
+        from generator.zouit_styles import COLOR_PINK, COLOR_PINK_FILL, PATTERN_HATCH
+        wor_content += f'''Set Map
+    Layer {layer_index}
+        Display Global
+        Global Pen (1,2,{COLOR_PINK}) Brush ({PATTERN_HATCH[2]},{COLOR_PINK_FILL}) Symbol (35,0,12) Line (1,2,0) Font ("Arial CYR",0,9,0)
+'''
+        layer_index += 1
+
     # ✅ СЛОЙ: Красные линии (СТИЛЬ ИЗ ИСХОДНОГО ФАЙЛА)
     wor_content += f'''Set Map
     Layer {layer_index}
@@ -629,18 +716,26 @@ Set Map
 '''
 
     # 1) A3 landscape, карта 1
-    ctx["ZOUIT_LEGEND"] = _build_zouit_legend_block(
+    zouit_block_a3, zouit_end_y_a3 = _build_zouit_legend_block(
         zouit_legend_items, template_filename="map1_a3_landscape.wor.txt"
     )
+    ago_block_a3 = _build_ago_legend_block(
+        ago, y_start=zouit_end_y_a3, template_filename="map1_a3_landscape.wor.txt"
+    )
+    ctx["ZOUIT_LEGEND"] = zouit_block_a3 + ago_block_a3
     wor_content += _load_and_render_layout("map1_a3_landscape.wor.txt", ctx)
 
     # 2) A2 landscape, карта 1
-    ctx["ZOUIT_LEGEND"] = _build_zouit_legend_block(
+    zouit_block_a2, zouit_end_y_a2 = _build_zouit_legend_block(
         zouit_legend_items, template_filename="map1_a2_landscape.wor.txt"
     )
+    ago_block_a2 = _build_ago_legend_block(
+        ago, y_start=zouit_end_y_a2, template_filename="map1_a2_landscape.wor.txt"
+    )
+    ctx["ZOUIT_LEGEND"] = zouit_block_a2 + ago_block_a2
     wor_content += _load_and_render_layout("map1_a2_landscape.wor.txt", ctx)
 
-    # 3) A4 landscape, карта 2 (ситуационный план) — без легенды ЗОУИТ
+    # 3) A4 landscape, карта 2 (ситуационный план) — без легенды ЗОУИТ/АГО
     ctx["ZOUIT_LEGEND"] = ""
     wor_content += _load_and_render_layout("map2_a4_landscape.wor.txt", ctx)
 

@@ -123,13 +123,14 @@ const GpFlow = () => {
       
       setSpatialData({
         zone: data.zone || { code: '', name: '' },
-        district: data.district || { code: '', name: '' },  // НОВОЕ: информация о районе
+        district: data.district || { code: '', name: '' },
         capital_objects: data.capital_objects || [],
-        zouit: data.zouit || [], // ВАЖНО: теперь содержит поле area для каждой ЗОУИТ
+        zouit: data.zouit || [],
         planning_project: data.planning_project || {
           exists: false,
           decision_full: 'Документация по планировке территории не утверждена'
-        }
+        },
+        ago_index: data.ago_index || null
       });
       
       message.success('Пространственный анализ выполнен');
@@ -165,10 +166,11 @@ const GpFlow = () => {
         application: applicationData,
         parcel: egrnData,
         zone: spatialData.zone,
-        district: spatialData.district,  // НОВОЕ: передаём информацию о районе
+        district: spatialData.district,
         capital_objects: spatialData.capital_objects,
         planning_project: spatialData.planning_project,
-        zouit: spatialData.zouit
+        zouit: spatialData.zouit,
+        ago_index: spatialData.ago_index || null
       };
 
       const response = await gradplanApi.generate(requestData);
@@ -489,6 +491,24 @@ const GpFlow = () => {
                   />
                 ) : (
                   <p>Объекты не обнаружены</p>
+                )}
+              </Card>
+
+              {/* АГО */}
+              <Card title="🏛️ Архитектурно-градостроительный облик (АГО)" size="small" style={{ marginBottom: 16 }}>
+                {spatialData.ago_index ? (
+                  <Descriptions column={1} size="small" bordered>
+                    <Descriptions.Item label="Пересечение">
+                      <Tag color="orange">Участок входит в границы АГО</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Индекс зоны">
+                      <strong>{spatialData.ago_index}</strong>
+                    </Descriptions.Item>
+                  </Descriptions>
+                ) : (
+                  <p style={{ color: '#8c8c8c', fontStyle: 'italic' }}>
+                    Территория АГО не пересекается с земельным участком
+                  </p>
                 )}
               </Card>
 

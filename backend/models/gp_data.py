@@ -203,6 +203,8 @@ class GPData:
     krt: List[RestrictionZone] = field(default_factory=list)
     okn: List[RestrictionZone] = field(default_factory=list)
     other_restrictions: List[RestrictionZone] = field(default_factory=list)
+    ago_index: Optional[str] = None     # "АГО-1", "АГО-2" или None
+    ago_geometry: Optional[Any] = None  # геометрия зоны АГО (Polygon/MultiPolygon)
     gp_number: Optional[str] = None
     gp_date: Optional[str] = None
     analysis_completed: bool = False

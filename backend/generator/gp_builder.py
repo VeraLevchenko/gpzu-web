@@ -353,6 +353,7 @@ class GPBuilder:
 
         self.tz_dir = self.data_dir / "tz_reglament"
         self.zouit_dir = self.data_dir / "zouit_reglament"
+        self.ago_reglament_dir = self.data_dir / "ago_reglament"
 
         if not os.path.exists(self.template_path):
             raise FileNotFoundError(f"Шаблон не найден: {self.template_path}")
@@ -665,9 +666,31 @@ class GPBuilder:
         # НОВОЕ: Информация о районе
         district = gp_data.get("district") or {}
         district_name = district.get("name") or ""
-    
+
         # Устанавливаем переменную для шаблона
         context["district_name"] = district_name if district_name else "Район не определён"
+
+        # АГО — архитектурно-градостроительный облик (п.12)
+        # Индекс в слое: "АГО-01", "АГО-02" (или "АГО-1", "АГО-2")
+        ago_index = gp_data.get("ago_index") or ""
+        ago_num = self._ago_number(ago_index)  # "1" или "2" или ""
+        if ago_num == "1":
+            context["ago_text"] = (
+                "Земельный участок расположен в границах территории регулирования "
+                "архитектурно-градостроительного облика – 1 (АГО-1)"
+            )
+        elif ago_num == "2":
+            context["ago_text"] = (
+                "Земельный участок расположен в границах территории регулирования "
+                "архитектурно-градостроительного облика – 2 (АГО-2)"
+            )
+        else:
+            context["ago_text"] = (
+                "требования к архитектурно-градостроительному облику объекта "
+                "капитального строительства не установлены"
+            )
+        context["ago_index"] = ago_index
+        context["INSERT_AGO_BLOCK"] = "{{INSERT_AGO_BLOCK}}"
 
         # Объекты капитального строительства
         capital_objects = gp_data.get("capital_objects") or []
@@ -750,6 +773,57 @@ class GPBuilder:
         elements = [deepcopy(el) for el in block_doc.element.body]
         for el in reversed(elements):
             body.insert(idx + 1, el)
+
+
+    @staticmethod
+    def _ago_number(ago_index: str) -> str:
+        """
+        Извлекает номер АГО из индекса.
+        "АГО-01" → "1", "АГО-1" → "1", "АГО-02" → "2", "" → ""
+        """
+        if not ago_index:
+            return ""
+        parts = ago_index.split("-")
+        if len(parts) >= 2:
+            try:
+                return str(int(parts[-1]))
+            except ValueError:
+                pass
+        return ""
+
+
+    def insert_ago_block(self, doc: Document, ago_index: Optional[str]) -> None:
+        """
+        Вставляет текст регламента АГО в п.12 на место маркера {{INSERT_AGO_BLOCK}}.
+        Если ago_index не задан — просто удаляет маркер.
+        """
+        marker = "{{INSERT_AGO_BLOCK}}"
+
+        ago_num = self._ago_number(ago_index or "")
+
+        if not ago_num:
+            # Удаляем маркер без вставки блока
+            for para in doc.paragraphs:
+                if marker in para.text:
+                    para.text = para.text.replace(marker, "").strip()
+                    logger.info("Маркер {{INSERT_AGO_BLOCK}} удалён (АГО не найдено)")
+                    break
+            return
+
+        filename = f"ago-{ago_num}.docx"  # "ago-1.docx" или "ago-2.docx"
+        ago_path = self.ago_reglament_dir / filename
+
+        if not ago_path.exists():
+            logger.warning(f"Файл регламента АГО не найден: {ago_path}")
+            for para in doc.paragraphs:
+                if marker in para.text:
+                    para.text = para.text.replace(marker, "").strip()
+                    break
+            return
+
+        block_doc = Document(str(ago_path))
+        self.insert_block_at_marker(doc, marker, block_doc)
+        logger.info(f"Вставлен блок регламента АГО: {ago_path.name}")
 
 
     def fill_zouit_table(self, doc: Document, zouit_list: List[Dict[str, Any]]) -> None:
@@ -1243,6 +1317,10 @@ class GPBuilder:
                 self.insert_block_at_marker(doc, "{{INSERT_ZONE_PARAMS}}", params_block)
             else:
                 logger.warning(f"Не найден блок параметров для зоны {zone_code}")
+
+        # --- 4б. Блок АГО (п.12) ---
+        ago_index = gp_data.get("ago_index")
+        self.insert_ago_block(doc, ago_index)
 
         # --- 5. ЗОУИТ (ОБНОВЛЕННАЯ ЛОГИКА С ПЛОЩАДЯМИ) ---
         zouit_list = gp_data.get("zouit") or []

@@ -78,61 +78,37 @@ def convert_mif_to_tab_gdal(
         gdal.SetConfigOption('MITAB_BOUNDS_FILE', '')  # Отключаем файл границ
         
         try:
-            # Открываем MIF с явным указанием кодировки
-            # GDAL автоматически определит кодировку из заголовка MIF (Charset "WindowsCyrillic")
-            mif_ds = ogr.Open(str(mif_path), update=False)
-            if mif_ds is None:
-                raise ValueError(f"Не удалось открыть MIF: {mif_path}")
-            
-            logger.info(f"MIF открыт, слоёв: {mif_ds.GetLayerCount()}")
-            
-            # Получаем информацию о слое для логирования
-            layer = mif_ds.GetLayer(0)
-            if layer:
-                logger.info(f"Записей в слое: {layer.GetFeatureCount()}")
-                layer_defn = layer.GetLayerDefn()
-                logger.info(f"Полей в слое: {layer_defn.GetFieldCount()}")
-                for i in range(layer_defn.GetFieldCount()):
-                    field_defn = layer_defn.GetFieldDefn(i)
-                    logger.info(f"  Поле {i}: {field_defn.GetName()} ({field_defn.GetTypeName()})")
-            
-            # Создаём TAB драйвер
-            tab_driver = ogr.GetDriverByName('MapInfo File')
-            if tab_driver is None:
-                raise ValueError("MapInfo File драйвер не найден в GDAL")
-            
             # Удаляем существующий TAB если есть
             if output_tab_path.exists():
-                logger.info(f"Удаление существующего TAB: {output_tab_path}")
-                tab_driver.DeleteDataSource(str(output_tab_path))
-            
-            # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Копируем MIF в TAB с правильными опциями
-            # ВАЖНО: Не используем copy_options при CopyDataSource - они не работают!
-            # Вместо этого устанавливаем конфигурацию GDAL перед копированием
-            
-            # Устанавливаем формат для чтения
-            gdal.SetConfigOption('MITAB_ENCODING', 'CP1251')
-            
-            tab_ds = tab_driver.CopyDataSource(mif_ds, str(output_tab_path))
-            
-            if tab_ds is None:
-                raise ValueError("Не удалось создать TAB файл")
-            
-            # Проверяем что TAB создан корректно
-            tab_layer = tab_ds.GetLayer(0)
-            if tab_layer:
-                logger.info(f"TAB создан, записей: {tab_layer.GetFeatureCount()}")
-            
-            # Закрываем датасеты
-            mif_ds = None
-            tab_ds = None
-            
+                tab_driver = ogr.GetDriverByName('MapInfo File')
+                if tab_driver:
+                    tab_driver.DeleteDataSource(str(output_tab_path))
+
+            # Конвертируем через VectorTranslate с явным указанием кодировки WindowsCyrillic.
+            # CopyDataSource не поддерживает layer creation options, поэтому используем VectorTranslate.
+            result_ds = gdal.VectorTranslate(
+                str(output_tab_path),
+                str(mif_path),
+                format='MapInfo File',
+                layerCreationOptions=['ENCODING=CP1251'],
+            )
+
+            if result_ds is None:
+                raise ValueError(f"VectorTranslate вернул None для {mif_path}")
+
+            # Логируем результат
+            layer = result_ds.GetLayer(0)
+            if layer:
+                logger.info(f"TAB создан, записей: {layer.GetFeatureCount()}")
+
+            result_ds = None  # закрыть/сбросить буферы
+
             logger.info(f"✅ TAB создан: {output_tab_path}")
-            
+
             # Удаляем MIF если требуется
             if remove_mif:
                 _remove_mif_files(mif_path)
-            
+
             return output_tab_path
             
         finally:

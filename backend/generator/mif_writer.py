@@ -887,8 +887,93 @@ def create_zouit_mif(
         logger.info(f"  ✅ Слой ЗОУИТ {i} создан: {mif_path.name}")
     
     logger.info(f"✅ Создано отдельных слоёв ЗОУИТ: {len(created_files)}")
-    
+
     return created_files
+
+
+def create_ago_mif(
+    ago: Any,
+    output_dir: Path,
+    filename: str = "аго",
+) -> Optional[Tuple[Path, Path]]:
+    """
+    Создать MIF/MID файл для слоя АГО (архитектурно-градостроительный облик).
+
+    Стиль: розовый контур Pen(1,2,COLOR_PINK), розовая штриховка Brush(PATTERN_HATCH[2], COLOR_PINK_FILL).
+    """
+    from generator.zouit_styles import COLOR_PINK, COLOR_PINK_FILL, PATTERN_HATCH
+    from shapely.geometry import MultiPolygon, Polygon as ShapelyPolygon
+
+    if ago is None or getattr(ago, 'geometry', None) is None:
+        return None
+
+    output_dir = Path(output_dir)
+    mif_path = output_dir / f"{filename}.MIF"
+    mid_path = output_dir / f"{filename}.MID"
+
+    geom = ago.geometry
+    if isinstance(geom, MultiPolygon):
+        polygons = list(geom.geoms)
+    elif isinstance(geom, ShapelyPolygon):
+        polygons = [geom]
+    else:
+        logger.warning(f"АГО: неизвестный тип геометрии {type(geom)}, пропускаем")
+        return None
+
+    valid_polygons = [p for p in polygons if p and not p.is_empty and hasattr(p, 'exterior')]
+    if not valid_polygons:
+        logger.warning("АГО: нет допустимых полигонов для записи")
+        return None
+
+    pen_color = COLOR_PINK
+    brush_pattern = PATTERN_HATCH[2]
+    brush_color = COLOR_PINK_FILL
+
+    try:
+        with open(mif_path, 'wb') as f:
+            def w(text: str):
+                f.write(text.encode('cp1251'))
+
+            w('Version   450\n')
+            w('Charset "WindowsCyrillic"\n')
+            w('Delimiter ","\n')
+            w(f'{MSK42_COORDSYS}\n')
+            w('Columns 2\n')
+            w('  Индекс Char(50)\n')
+            w('  Наименование Char(254)\n')
+            w('Data\n\n')
+
+            if len(valid_polygons) == 1:
+                coords = list(valid_polygons[0].exterior.coords)
+                w('Region  1\n')
+                w(f'  {len(coords)}\n')
+                for x, y in coords:
+                    w(f'{x} {y}\n')
+            else:
+                w(f'Region  {len(valid_polygons)}\n')
+                for poly in valid_polygons:
+                    coords = list(poly.exterior.coords)
+                    w(f'  {len(coords)}\n')
+                    for x, y in coords:
+                        w(f'{x} {y}\n')
+
+            w(f'    Pen (1,2,{pen_color})\n')
+            w(f'    Brush ({brush_pattern},{brush_color})\n')
+            w('\n')
+
+        index_safe = safe_encode_cp1251(ago.index or "")
+        name_safe = safe_encode_cp1251(getattr(ago, 'name', '') or ago.index or "")
+        with open(mid_path, 'wb') as f:
+            line = f'{escape_mif_string(index_safe)},{escape_mif_string(name_safe)}\n'
+            f.write(line.encode('cp1251'))
+
+        logger.info(f"✅ Слой АГО создан: {mif_path.name} ({len(valid_polygons)} полигонов)")
+        return mif_path, mid_path
+
+    except Exception as ex:
+        logger.exception(f"Ошибка при создании слоя АГО: {ex}")
+        return None
+
 
 def create_zouit_labels_mif(
     zouit_list: List[Any],

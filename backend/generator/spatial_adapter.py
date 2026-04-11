@@ -18,6 +18,7 @@ from models.workspace_data import (
     BuildingZoneLayer,
     CapitalObjectInfo,
     ZouitInfo,
+    AgoInfo,
 )
 from models.gp_data import GPData, ParcelInfo
 from utils.spatial_analysis import perform_spatial_analysis
@@ -104,25 +105,31 @@ def create_workspace_from_egrn(egrn_data: EGRNData) -> WorkspaceData:
     capital_objects = _convert_capital_objects(gp_data.capital_objects)
     
     # ========== ШАГ 6: Конвертация ЗОУИТ ========== #
-    
+
     zouit = _convert_zouit(gp_data.zouit)
-    
+
+    # ========== ШАГ 6-Б: Конвертация АГО ========== #
+
+    ago = _convert_ago(gp_data)
+
     # ========== ШАГ 7: Сборка WorkspaceData ========== #
-    
+
     from datetime import datetime
-    
+
     workspace = WorkspaceData(
         parcel=parcel,
         building_zone=building_zone,
         capital_objects=capital_objects,
         zouit=zouit,
+        ago=ago,
         created_at=datetime.now().isoformat()
     )
-    
+
     logger.info(f"✅ WorkspaceData создан:")
     logger.info(f"   - Участок: {workspace.parcel.cadnum}")
     logger.info(f"   - ОКС: {len(workspace.capital_objects)}")
     logger.info(f"   - ЗОУИТ: {len(workspace.zouit)}")
+    logger.info(f"   - АГО: {ago.index if ago else 'нет'}")
     
     return workspace
 
@@ -241,6 +248,23 @@ def _convert_zouit(
         )
     
     return result
+
+
+def _convert_ago(gp_data: GPData) -> Optional[AgoInfo]:
+    """
+    Конвертировать данные АГО из GPData в AgoInfo для рабочего набора.
+    """
+    ago_index = getattr(gp_data, 'ago_index', None)
+    if not ago_index:
+        return None
+
+    geometry = getattr(gp_data, 'ago_geometry', None)
+    if geometry is None:
+        logger.warning(f"АГО {ago_index}: индекс найден, но геометрия отсутствует — слой не создаётся")
+        return None
+
+    logger.debug(f"АГО: {ago_index} — геометрия ✅")
+    return AgoInfo(index=ago_index, geometry=geometry)
 
 
 def _format_restriction(zone: any) -> str:
