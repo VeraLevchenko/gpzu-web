@@ -105,48 +105,53 @@ def parse_rrr_xml(raw: bytes) -> RRRXMLData:
 
     result = RRRXMLData()
 
-    # Ищем NewParcel
-    new_parcel = root.xpath("//*[local-name()='NewParcel']")
-    if not new_parcel:
+    # Ищем все NewParcel (один или несколько контуров многоконтурного участка)
+    new_parcels = root.xpath("//*[local-name()='NewParcel']")
+    if not new_parcels:
         return result
 
-    parcel = new_parcel[0]
+    # Метаданные — из первого контура
+    first = new_parcels[0]
 
-    # CadastralBlock
-    cb = parcel.xpath("*[local-name()='CadastralBlock']")
+    cb = first.xpath("*[local-name()='CadastralBlock']")
     if cb:
         result.cadastral_block = _text_or_none(cb[0])
 
-    # Note — местоположение объекта
-    note_el = parcel.xpath("*[local-name()='Note']")
+    note_el = first.xpath("*[local-name()='Note']")
     if note_el:
         result.note = _text_or_none(note_el[0])
 
-    # Area
-    area_el = parcel.xpath("*[local-name()='Area']/*[local-name()='Area']")
-    if area_el:
-        try:
-            result.area = float(_text_or_none(area_el[0]))
-        except (ValueError, TypeError):
-            pass
+    # Площадь — сумма всех контуров
+    total_area = 0.0
+    for parcel in new_parcels:
+        area_el = parcel.xpath("*[local-name()='Area']/*[local-name()='Area']")
+        if area_el:
+            try:
+                total_area += float(_text_or_none(area_el[0]))
+            except (ValueError, TypeError):
+                pass
+    if total_area > 0:
+        result.area = total_area
 
-    # Coordinates
-    ordinates = parcel.xpath(
-        ".//*[local-name()='Entity_Spatial']"
-        "//*[local-name()='Spatial_Element']"
-        "//*[local-name()='Spelement_Unit']"
-        "/*[local-name()='NewOrdinate']"
-    )
-
+    # Координаты — из ВСЕХ контуров, плоским списком.
+    # Каждый NewParcel замкнут (последняя точка == первая), что позволяет
+    # _split_contours_by_closure в rrr_mapinfo.py корректно разбить на контуры.
     coords = []
-    for ord_el in ordinates:
-        x_xml = ord_el.get("X")  # восток
-        y_xml = ord_el.get("Y")  # север
-        num = ord_el.get("Num_Geopoint", str(len(coords) + 1))
+    for parcel in new_parcels:
+        ordinates = parcel.xpath(
+            ".//*[local-name()='Entity_Spatial']"
+            "//*[local-name()='Spatial_Element']"
+            "//*[local-name()='Spelement_Unit']"
+            "/*[local-name()='NewOrdinate']"
+        )
+        for ord_el in ordinates:
+            x_xml = ord_el.get("X")  # восток
+            y_xml = ord_el.get("Y")  # север
+            num = ord_el.get("Num_Geopoint", str(len(coords) + 1))
 
-        if x_xml and y_xml:
-            # МЕНЯЕМ МЕСТАМИ: x=север(из Y), y=восток(из X)
-            coords.append(RRRCoord(num=num, x=y_xml, y=x_xml))
+            if x_xml and y_xml:
+                # МЕНЯЕМ МЕСТАМИ: x=север(из Y), y=восток(из X)
+                coords.append(RRRCoord(num=num, x=y_xml, y=x_xml))
 
     result.coordinates = coords
     result.has_coords = bool(coords)
