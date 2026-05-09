@@ -48,6 +48,10 @@
   background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
 }
 
+.passports-cover {
+  background: linear-gradient(135deg, #f46b45 0%, #eea849 100%);
+}
+
 .card-icon {
   font-size: 120px;
   color: white;

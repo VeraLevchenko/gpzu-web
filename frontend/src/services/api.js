@@ -256,6 +256,47 @@ export const rrrApi = {
 };
 
 // ========================================
+// МОДУЛЬ: ПАСПОРТА УЧАСТКОВ
+// ========================================
+export const landPassportsApi = {
+  // Запуск обработки ЕГРН → {job_id, total}
+  parseEgrn: (files) => {
+    const formData = new FormData();
+    files.forEach(f => formData.append('files', f));
+    return api.post('/api/land-passports/parse-egrn', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // Прогресс задания → {status, progress, current, total, error?}
+  getProgress: (jobId) => api.get(`/api/land-passports/progress/${jobId}`),
+
+  // Скачать результат готового задания
+  download: (jobId) => api.get(`/api/land-passports/download/${jobId}`, { responseType: 'blob' }),
+
+  // Отменить задание
+  cancel: (jobId) => api.delete(`/api/land-passports/cancel/${jobId}`),
+
+  // Валидация xlsx
+  validate: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/land-passports/validate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // Запуск генерации паспортов → {job_id, total}
+  generate: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/api/land-passports/generate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
+// ========================================
 // АУТЕНТИФИКАЦИЯ
 // ========================================
 export const authApi = {

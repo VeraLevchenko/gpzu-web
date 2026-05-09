@@ -1,7 +1,7 @@
 // frontend/src/pages/Home.jsx
 import React from 'react';
 import { Card, Row, Col } from 'antd';
-import { FileTextOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { FileTextOutlined, SafetyCertificateOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import UserHeader from '../components/Common/UserHeader';
 import './Home.css';
@@ -47,6 +47,24 @@ const Home = () => {
                 <p>
                   Выдача решений о разрешении размещения объектов:
                   регистрация заявлений, пространственный анализ, формирование документов
+                </p>
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card
+              hoverable
+              className="module-card"
+              onClick={() => navigate('/land-passports')}
+            >
+              <div className="card-cover passports-cover">
+                <FileSearchOutlined className="card-icon" />
+              </div>
+              <div className="card-content">
+                <h2>Паспорта участков</h2>
+                <p>
+                  Подготовка паспортов земельных участков:
+                  формирование перечня из ЕГРН XML, генерация docx-паспортов
                 </p>
               </div>
             </Card>

@@ -15,6 +15,9 @@ import WorkspaceFlow from './components/GP/WorkspaceFlow';
 import RRRList from './components/RRR/RRRList';
 import RRRCreate from './components/RRR/RRRCreate';
 import RRRCard from './components/RRR/RRRCard';
+import LandPassports from './pages/LandPassports';
+import PrepareListFlow from './components/LandPassports/PrepareListFlow';
+import PreparePassportsFlow from './components/LandPassports/PreparePassportsFlow';
 import { authApi } from './services/api';
 
 const ProtectedRoute = ({ children }) => {
@@ -50,6 +53,9 @@ function App() {
           <Route path="/rrr" element={<ProtectedRoute><RRRList /></ProtectedRoute>} />
           <Route path="/rrr/new" element={<ProtectedRoute><RRRCreate /></ProtectedRoute>} />
           <Route path="/rrr/:id" element={<ProtectedRoute><RRRCard /></ProtectedRoute>} />
+          <Route path="/land-passports" element={<ProtectedRoute><LandPassports /></ProtectedRoute>} />
+          <Route path="/land-passports/list" element={<ProtectedRoute><PrepareListFlow /></ProtectedRoute>} />
+          <Route path="/land-passports/passports" element={<ProtectedRoute><PreparePassportsFlow /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

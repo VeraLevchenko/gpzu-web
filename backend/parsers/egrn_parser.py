@@ -1,7 +1,9 @@
 # backend/parsers/egrn_parser.py
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import date
 from io import BytesIO
 from typing import List, Optional, Tuple
 import zipfile
@@ -65,6 +67,11 @@ class EGRNData:
 
     # ВРИ / вид разрешённого использования
     permitted_use: Optional[str] = None
+
+    # Поля для паспортов участков
+    land_category: Optional[str] = None    # Категория земель
+    cadastral_value: Optional[str] = None  # Кадастровая стоимость
+    ownership_form: Optional[str] = None   # Форма собственности (из раздела прав)
 
 
 # ----------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------------------- #
@@ -211,6 +218,139 @@ def _extract_permitted_use(root: etree._Element) -> Optional[str]:
     return None
 
 
+def _extract_land_category(root: etree._Element) -> Optional[str]:
+    paths = [
+        # реальная структура: <category><type><value>Земли населенных пунктов</value>
+        "//*[local-name()='category']/*[local-name()='type']/*[local-name()='value'][1]",
+        "//*[local-name()='category']/*[local-name()='value'][1]",
+        "//*[local-name()='ground_category']/*[local-name()='value'][1]",
+        "//*[local-name()='category_type']/*[local-name()='value'][1]",
+    ]
+    for p in paths:
+        el = _xpath_first(root, p)
+        txt = _text_or_none(el)
+        if txt:
+            return txt
+    return None
+
+
+def _extract_cadastral_value(root: etree._Element) -> Optional[str]:
+    paths = [
+        # реальная структура: <cost><value>303915.63</value>
+        "//*[local-name()='cost']/*[local-name()='value'][1]",
+        "//*[local-name()='cad_cost']/*[local-name()='value'][1]",
+        "//*[local-name()='cadastral_cost']/*[local-name()='value'][1]",
+        "//*[local-name()='cad_cost'][1]",
+        "//*[local-name()='cadastral_cost'][1]",
+    ]
+    for p in paths:
+        el = _xpath_first(root, p)
+        txt = _text_or_none(el)
+        if txt:
+            return txt
+    return None
+
+
+def _parse_lease_end_date(restrict_record: etree._Element) -> Optional[date]:
+    """Извлекает дату окончания аренды из restrict_record."""
+    # Вариант 1: period_info/end_date (ISO формат 'YYYY-MM-DD')
+    end_el = _xpath_first(restrict_record, ".//*[local-name()='end_date'][1]")
+    end_txt = _text_or_none(end_el)
+    if end_txt:
+        try:
+            return date.fromisoformat(end_txt[:10])
+        except ValueError:
+            pass
+
+    # Вариант 2: deal_validity_time — текст вида 'с DD.MM.YYYY по DD.MM.YYYY'
+    dv_el = _xpath_first(restrict_record, ".//*[local-name()='deal_validity_time'][1]")
+    dv_txt = _text_or_none(dv_el)
+    if dv_txt:
+        dates = re.findall(r'(\d{2})\.(\d{2})\.(\d{4})', dv_txt)
+        if dates:
+            d, m, y = dates[-1]
+            try:
+                return date(int(y), int(m), int(d))
+            except ValueError:
+                pass
+
+    return None  # дата не найдена — считаем аренду действующей (ниже)
+
+
+def _has_active_lease(root: etree._Element) -> bool:
+    """Проверяет, есть ли действующая аренда в разделе обременений."""
+    today = date.today()
+    for rec in root.xpath("//*[local-name()='restrict_record']"):
+        type_el = _xpath_first(
+            rec,
+            ".//*[local-name()='restriction_encumbrance_type']/*[local-name()='value'][1]",
+        )
+        rtype = (_text_or_none(type_el) or "").lower()
+        if 'аренда' not in rtype:
+            continue
+        end = _parse_lease_end_date(rec)
+        if end is None or end >= today:
+            return True
+    return False
+
+
+def _extract_ownership_form(root: etree._Element) -> Optional[str]:
+    # Тип права: right_record/right_data/right_type/value
+    right_type_el = _xpath_first(
+        root,
+        "//*[local-name()='right_record']"
+        "//*[local-name()='right_type']"
+        "/*[local-name()='value'][1]",
+    )
+    right_type = _text_or_none(right_type_el)
+    if not right_type:
+        return None
+
+    rt_lower = right_type.lower()
+    if 'долевая' in rt_lower:
+        ownership = 'Общая долевая собственность'
+    elif 'совместная' in rt_lower:
+        ownership = 'Общая совместная собственность'
+    elif 'собственность' not in rt_lower:
+        ownership = right_type
+    else:
+        # Определяем тип правообладателя из right_record
+        record_holders = root.xpath(
+            "//*[local-name()='right_record']"
+            "//*[local-name()='right_holder']"
+        )
+        individual_count = sum(
+            1 for h in record_holders if h.xpath("*[local-name()='individual']")
+        )
+        public_count = sum(
+            1 for h in record_holders if h.xpath("*[local-name()='public_formation']")
+        )
+
+        if individual_count + public_count > 1:
+            ownership = 'Общая долевая собственность'
+        elif public_count == 1:
+            code_el = _xpath_first(
+                root,
+                "//*[local-name()='right_record']"
+                "//*[local-name()='public_formation_type']"
+                "/*[local-name()='code'][1]",
+            )
+            code = _text_or_none(code_el) or ""
+            if code.startswith("006"):
+                ownership = 'федеральная собственность'
+            elif code.startswith("007"):
+                ownership = 'государственная собственность субъекта РФ'
+            else:
+                ownership = 'муниципальная собственность'
+        else:
+            ownership = 'частная собственность'
+
+    if _has_active_lease(root):
+        ownership += ', обременение: аренда'
+
+    return ownership
+
+
 def _extract_capital_objects(root: etree._Element) -> List[str]:
     """
     Список кадастровых номеров объектов капитального строительства в границах ЗУ (если есть).
@@ -334,6 +474,9 @@ def parse_egrn_xml(raw: bytes) -> EGRNData:
     region, municipality, settlement = _extract_admins(root)
     permitted_use = _extract_permitted_use(root)
     capital_objects = _extract_capital_objects(root)
+    land_category = _extract_land_category(root)
+    cadastral_value = _extract_cadastral_value(root)
+    ownership_form = _extract_ownership_form(root)
 
     contours = _extract_contours_from_contours_location(root)
     coordinates = [pt for contour in contours for pt in contour]
@@ -354,4 +497,7 @@ def parse_egrn_xml(raw: bytes) -> EGRNData:
         has_coords=has_coords,
         capital_objects=capital_objects,
         permitted_use=permitted_use,
+        land_category=land_category,
+        cadastral_value=cadastral_value,
+        ownership_form=ownership_form,
     )

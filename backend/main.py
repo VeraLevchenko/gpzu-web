@@ -39,6 +39,8 @@ from api.gp.workspace import router as workspace_router
 from api.gp.applications_crud import router as applications_crud_router
 # Импорт роутера РРР
 from api.rrr.routes import router as rrr_router
+# Импорт роутера паспортов участков
+from api.land_passports.routes import router as land_passports_router
 from api.gp.refusals_crud import router as refusals_crud_router
 from api.gp.tu_requests_crud import router as tu_requests_crud_router
 
@@ -149,6 +151,9 @@ app.include_router(tu_requests_crud_router)   # /api/gp/tu-requests
 
 # Модуль РРР (Разрешение на Размещение Ресурсов)
 app.include_router(rrr_router)                # /api/rrr/*
+
+# Модуль паспортов земельных участков
+app.include_router(land_passports_router)     # /api/land-passports/*
 
 # ========================================================================
 # СЛУЖЕБНЫЕ ENDPOINTS
