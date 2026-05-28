@@ -55,7 +55,7 @@ class PlacementPermit(Base):
 
     # Геоданные (из XML)
     area = Column(Float, nullable=True)
-    location = Column(String(200), nullable=True)
+    location = Column(Text, nullable=True)
     coordinates = Column(JSONB, nullable=True)
 
     # Пространственный анализ (простые)

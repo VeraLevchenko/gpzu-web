@@ -130,9 +130,14 @@ async def create_permit(
         notes=data.notes,
     )
 
-    db.add(permit)
-    db.commit()
-    db.refresh(permit)
+    try:
+        db.add(permit)
+        db.commit()
+        db.refresh(permit)
+    except Exception as ex:
+        db.rollback()
+        logger.error(f"Ошибка сохранения разрешения: {ex}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения в БД: {str(ex)}")
 
     return {"success": True, "data": permit.to_dict()}
 
